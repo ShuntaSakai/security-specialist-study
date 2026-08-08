@@ -43,7 +43,7 @@ Use eight cross-domain Level 2–3 questions for an unassessed first session unl
 For each question:
 
 - Put only the question text inside an HTML comment.
-- Keep Domain, Primary Terms, Related Terms, Level, and Track visible as metadata. Put only independently scored concepts in Primary Terms; put supporting context in Related Terms.
+- Keep Domain, Primary Terms, Related Terms, Level, and Track visible as metadata. Write Primary Terms and Related Terms as one backtick-wrapped concept per nested Markdown list item; never join terms with `/` or another delimiter. Put only independently scored concepts in Primary Terms, use exact taxonomy spelling, and put supporting context in Related Terms.
 - Add an empty `### 回答` area with the standard placeholder comment.
 - Ask for explanation, causality, conditions, application, or comparison. Avoid pure term-to-definition recall unless Level 1 is justified.
 - Match Level 1–3 to weak concepts and Level 4–6 to demonstrated mastery.
@@ -57,18 +57,22 @@ After writing, verify the file, question count, unique numbering, metadata, hidd
 
 Perform these steps in order:
 
-1. Find the newest session whose Status is not `graded`, unless the user names a date or Session number.
+1. Resume the newest `grading` Session first. Otherwise find the newest `awaiting_answers` or `ready_for_grading` Session, unless the user names a date or Session number. Never select `graded` or `cancelled`.
 2. Read every question, its metadata, and the user's full answer. Ignore HTML placeholder comments.
 3. If any answer is blank, do not fabricate or partially finalize scores. Identify the unanswered question numbers and leave progress unchanged.
 4. Score each answer from 0 to 100 for conceptual meaning. Select only applicable rubric dimensions: definition, principle, conditions, scenario/application, countermeasures with reasons, comparison/limits. Normalize applicable weights to 100.
-5. Append concise feedback under each answer: score, good points, missing or mistaken points, a short model explanation, and one next-review focus.
-6. Change that Session Status to `graded` and append its summary.
-7. Update `progress/terms.md` using difficulty caps and the weighted mastery formula. Treat `Primary Terms` as central concepts. Do not numerically update `Related Terms` unless the answer independently demonstrated them; if it did, use half update weight and do not increment Attempts or Average as though they were central.
-8. Update `progress/domains.md` from term mastery (70%) and the latest five answers in that domain (30%). Do not count unassessed terms as zero.
-9. Append one row to `progress/history.md`. Include average, Subject B ratio, weak/strong domains, next focus, and the relative session link.
-10. Set each assessed term's Next Review using current mastery, answer score, difficulty, and stable high performance.
+5. Change the Session Status to `grading`. Upsert concise feedback under each answer: score, good points, missing or mistaken points, a short model explanation, and one next-review focus. On recovery, replace an existing grading block instead of appending a duplicate.
+6. Run the idempotent recorder only after every question has one valid score:
 
-Use `../../references/scoring-rules.md` as the arithmetic authority. Preserve existing manual notes unless replacing them with more specific evidence. Keep all three progress files mutually consistent: the same date, domain name, question count, average, and next-review conclusions must agree.
+   ```bash
+   python3 skills/security-specialist-trainer/scripts/study_helper.py record \
+     --root . --date YYYY-MM-DD --session N
+   ```
+
+7. Let the recorder update `terms.md`, recompute `domains.md`, upsert `history.md`, append or replace the Session Summary, and change Status to `graded` last. It uses `Applied Sessions` to avoid double-counting after interruption. Record overlapping Primary Terms in chronological Session order.
+8. If the recorder fails, leave Status as `grading`, report the error, and retry after correcting it. Never claim progress was updated and never set `graded` manually before all three progress files succeed.
+
+Use `../../references/scoring-rules.md` as the arithmetic authority. Update only Primary Terms numerically; Related Terms remain context until directly assessed. Keep all three progress files mutually consistent: the same date, domain name, question count, average, and next-review conclusions must agree. If the recorder is unavailable, reproduce its ordering and idempotency rules manually and mark `graded` only as the final write.
 
 After editing, reread the graded Session and the three progress files. Confirm one score per question, a correct arithmetic average, no duplicate term row, and no duplicate history row. In chat, report the session average, strongest point, most important gap, and next review date; link the session file.
 

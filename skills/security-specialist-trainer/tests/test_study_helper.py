@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
 import tempfile
 import unittest
@@ -112,10 +113,99 @@ class StudyHelperTest(unittest.TestCase):
 
     def test_progress_term_not_in_catalog_remains_eligible(self) -> None:
         record = study_helper.TermRecord(
-            "プレースホルダ", "Webセキュリティ", 35, date(2026, 8, 9), 1, 35, 2, date(2026, 8, 10), "SQLインジェクション", ""
+            "プレースホルダ",
+            "Webセキュリティ",
+            35,
+            date(2026, 8, 9),
+            1,
+            35,
+            2,
+            date(2026, 8, 10),
+            "SQLインジェクション",
+            "",
+            track="A",
         )
         merged = study_helper.merge_uncatalogued_terms(self.catalog, {record.term: record})
-        self.assertIn("プレースホルダ", {item.term for item in merged})
+        merged_by_term = {item.term: item for item in merged}
+        self.assertEqual("A", merged_by_term["プレースホルダ"].track)
+
+    def test_same_day_penalty_uses_last_score_not_lifetime_average(self) -> None:
+        item = next(item for item in self.catalog if item.term == "SQLインジェクション")
+        failed = study_helper.TermRecord(
+            item.term,
+            item.domain,
+            57,
+            date(2026, 8, 9),
+            10,
+            85,
+            5,
+            date(2026, 8, 10),
+            item.related,
+            "",
+            track="B",
+            last_score=20,
+        )
+        passed = study_helper.TermRecord(
+            item.term,
+            item.domain,
+            57,
+            date(2026, 8, 9),
+            10,
+            85,
+            5,
+            date(2026, 8, 10),
+            item.related,
+            "",
+            track="B",
+            last_score=80,
+        )
+        failed_priority = study_helper.build_candidates(
+            [item], {item.term: failed}, date(2026, 8, 9), {}
+        )[0].priority
+        passed_priority = study_helper.build_candidates(
+            [item], {item.term: passed}, date(2026, 8, 9), {}
+        )[0].priority
+        self.assertEqual(30, failed_priority - passed_priority)
+
+    def test_older_session_cannot_overwrite_newer_term_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "progress").mkdir()
+            existing = study_helper.TermRecord(
+                "SQLインジェクション",
+                "Webセキュリティ",
+                70,
+                date(2026, 8, 9),
+                1,
+                70,
+                2,
+                date(2026, 8, 14),
+                "プレースホルダ",
+                "",
+                track="B",
+                last_score=70,
+                last_session="2026-08-09#2",
+                applied_sessions=("2026-08-09#2",),
+            )
+            terms_path = root / "progress" / "terms.md"
+            terms_path.write_text(
+                study_helper.render_terms({existing.term: existing}),
+                encoding="utf-8",
+            )
+            question = study_helper.GradedQuestion(
+                number=1,
+                domain="Webセキュリティ",
+                track="B",
+                level=2,
+                primary_terms=("SQLインジェクション",),
+                related_terms=("プレースホルダ",),
+                score=80,
+                good_point="",
+                review_focus="",
+            )
+            with self.assertRaisesRegex(ValueError, "record sessions chronologically"):
+                study_helper.update_term_records(root, date(2026, 8, 9), 1, [question], [])
+            self.assertEqual(1, study_helper.load_terms(root)[existing.term].attempts)
 
     def test_high_level_success_has_longer_review_interval(self) -> None:
         self.assertEqual(30, study_helper.next_interval(92, 80, 5))
@@ -136,6 +226,160 @@ class StudyHelperTest(unittest.TestCase):
             )
             self.assertTrue(study_helper.load_catalog(root))
             self.assertEqual({}, study_helper.load_terms(root))
+
+    def test_record_is_idempotent_and_drives_next_day_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "references").mkdir()
+            (root / "progress").mkdir()
+            (root / "sessions").mkdir()
+            shutil.copy(self.root / "references" / "taxonomy.md", root / "references" / "taxonomy.md")
+            shutil.copy(self.root / "progress" / "terms.md", root / "progress" / "terms.md")
+            shutil.copy(self.root / "progress" / "domains.md", root / "progress" / "domains.md")
+            shutil.copy(self.root / "progress" / "history.md", root / "progress" / "history.md")
+            session_path = root / "sessions" / "2026-08-09.md"
+            session_path.write_text(
+                """# 2026-08-09 セキスペ学習
+
+## Session 1
+
+- Created: 2026-08-09
+- Status: grading
+- Mode: diagnosis
+- Question Count: 3
+- Subject B Target: 70–85%
+
+### Q1
+
+- Domain: PKI・証明書
+- Primary Terms:
+  - `CRL / OCSP`
+- Related Terms:
+  - `証明書失効`
+- Level: 3
+- Track: B
+
+<!-- CRLとOCSPを比較してください。 -->
+
+### 回答
+
+回答済み。
+
+### 採点
+
+Score: 45 / 100
+
+#### 良かった点
+
+- 失効確認という目的は説明できた
+
+#### 次回確認する観点
+
+- pull型と問い合わせ方式の違い
+
+### Q2
+
+- Domain: リスク・ガバナンス
+- Primary Terms:
+  - `リスク対応`
+- Related Terms:
+  - `リスク受容`
+- Level: 2
+- Track: A/B
+
+<!-- リスク対応を説明してください。 -->
+
+### 回答
+
+回答済み。
+
+### 採点
+
+Score: 100 / 100
+
+#### 良かった点
+
+- 四つの対応を区別できた
+
+#### 次回確認する観点
+
+- 残存リスクの承認
+
+### Q3
+
+- Domain: リスク・ガバナンス
+- Primary Terms:
+  - `独自A概念`
+- Related Terms:
+  - `リスク対応`
+- Level: 2
+- Track: A
+
+<!-- 独自A概念を説明してください。 -->
+
+### 回答
+
+回答済み。
+
+### 採点
+
+Score: 70 / 100
+
+#### 良かった点
+
+- 基本を説明できた
+
+#### 次回確認する観点
+
+- 応用例
+""",
+                encoding="utf-8",
+            )
+
+            _, parsed_questions = study_helper.parse_graded_session(
+                session_path.read_text(encoding="utf-8"), 1
+            )
+            partial_records = study_helper.update_term_records(
+                root,
+                date(2026, 8, 9),
+                1,
+                parsed_questions,
+                study_helper.load_catalog(root),
+            )
+            self.assertEqual(1, partial_records["CRL / OCSP"].attempts)
+            self.assertIn("- Status: grading", session_path.read_text(encoding="utf-8"))
+            self.assertEqual([], study_helper.read_table(root / "progress" / "history.md", "Date"))
+
+            first = study_helper.record_progress(root, date(2026, 8, 9), 1)
+            records = study_helper.load_terms(root)
+            self.assertEqual(3, first["questions"])
+            self.assertIn("- Status: graded", session_path.read_text(encoding="utf-8"))
+            self.assertEqual({"CRL / OCSP", "リスク対応", "独自A概念"}, set(records))
+            self.assertEqual("A", records["独自A概念"].track)
+            self.assertEqual(45, records["CRL / OCSP"].last_score)
+            self.assertEqual("2026-08-09#1", records["CRL / OCSP"].last_session)
+            self.assertEqual(("2026-08-09#1",), records["CRL / OCSP"].applied_sessions)
+            self.assertEqual(1, records["CRL / OCSP"].attempts)
+
+            second = study_helper.record_progress(root, date(2026, 8, 9), 1)
+            records_after_retry = study_helper.load_terms(root)
+            history = study_helper.read_table(root / "progress" / "history.md", "Date")
+            self.assertEqual(first["average"], second["average"])
+            self.assertEqual(1, records_after_retry["CRL / OCSP"].attempts)
+            self.assertEqual(1, len(history))
+            self.assertEqual(0o644, (root / "progress" / "terms.md").stat().st_mode & 0o777)
+
+            catalog = study_helper.merge_uncatalogued_terms(
+                study_helper.load_catalog(root), records_after_retry
+            )
+            candidates = study_helper.build_candidates(
+                catalog,
+                records_after_retry,
+                date(2026, 8, 10),
+                study_helper.recent_domain_counts(root),
+            )
+            plan = study_helper.adaptive_plan(candidates, 5)
+            self.assertIn("CRL / OCSP", {candidate.item.term for _, candidate in plan})
 
 
 if __name__ == "__main__":

@@ -18,8 +18,10 @@
 ### Q1
 
 - Domain: Webセキュリティ
-- Primary Terms: SQLインジェクション
-- Related Terms: プレースホルダ
+- Primary Terms:
+  - `SQLインジェクション`
+- Related Terms:
+  - `プレースホルダ`
 - Level: 2
 - Track: B
 
@@ -32,11 +34,13 @@
 <!-- この行の下に回答を書いてください -->
 ```
 
-問題文だけをコメント内へ置く。Domain、Primary Terms、Related Terms、Level、Trackは適応処理に必要なので可視メタデータとして残す。`Primary Terms` には、その問題で独立に採点する中心概念だけを書く。比較問題で両方を十分に問う場合は複数でもよい。補助的に触れるだけの概念は `Related Terms` へ分ける。問題文には曖昧な「説明せよ」だけでなく、評価する観点を列挙する。
+問題文だけをコメント内へ置く。Domain、Primary Terms、Related Terms、Level、Trackは適応処理に必要なので可視メタデータとして残す。語句名自体に `/` を含められるよう、Primary TermsとRelated Termsは必ず上例のような**1語句1行のコード表記リスト**にする。区切り文字で1行へ連結しない。
+
+`Primary Terms` には、その問題で独立に採点する中心概念だけを書く。比較問題で両方を十分に問う場合は複数でもよいが、同じSession内で同じPrimary Termを2問へ割り当てない。補助的に触れるだけの概念は `Related Terms` へ分ける。カタログ掲載語句は `taxonomy.md` の綴りと完全一致させる。問題文には曖昧な「説明せよ」だけでなく、評価する観点を列挙する。
 
 ## 採点後
 
-`Status` を `graded` へ変更し、各回答の直後へ追記する。
+全回答を確認したら `Status` を `grading` へ変更し、各回答の直後へ採点を追記する。`graded` は3つのprogress更新がすべて完了した最後にだけ設定する。
 
 ```md
 ### 採点
@@ -60,7 +64,14 @@ Score: 72 / 100
 - ...
 ```
 
-セッション末尾にも次を追記する。
+採点を書き終えたら、補助スクリプトの `record` コマンドでprogress更新とSession Summaryの確定を行う。
+
+```bash
+python3 skills/security-specialist-trainer/scripts/study_helper.py record \
+  --root . --date 2026-08-09 --session 1
+```
+
+コマンドは `Applied Sessions` と履歴のDate/Sessionを使って冪等に更新する。同じコマンドを再実行してもAttemptsや履歴行を重複させない。共通するPrimary Termを含む複数Sessionは古い順に記録する。更新が完了すると、セッション末尾は次の形式になりStatusが `graded` へ変わる。
 
 ```md
 ## Session 1 Summary
@@ -76,7 +87,8 @@ Score: 72 / 100
 
 - `awaiting_answers`: 一つ以上の回答が未記入。記入済みだけを勝手に部分採点しない。
 - `ready_for_grading`: 任意。ユーザーまたはSkillが全回答記入を確認した状態。
+- `grading`: 問題別採点は存在するが、progress更新が途中または未確認。`record` を再実行して復旧できる。
 - `graded`: 問題別採点とprogress更新が完了。
 - `cancelled`: ユーザーが明示的に中止した場合だけ使う。
 
-「採点して」では日付指定がなければ、日付降順・Session番号降順で最初の未採点セッションを使う。複数ある場合は対象ファイルとSession番号をチャットで明示する。
+「採点して」では日付指定がなければ、まず `grading` のSessionを復旧対象にし、その後で日付降順・Session番号降順の `awaiting_answers` または `ready_for_grading` を使う。`graded` と `cancelled` は対象外。複数ある場合は対象ファイルとSession番号をチャットで明示する。

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build a deterministic, human-reviewable adaptive study selection plan.
+"""Plan topics and idempotently record model-scored study results in Markdown.
 
-The script reads Markdown only and never mutates the learning record. Codex uses
-the plan as input when authoring questions; semantic grading remains model-led.
+Question authoring and semantic grading remain model-led. The record command
+performs deterministic arithmetic and atomic Markdown state updates.
 """
 
 from __future__ import annotations
@@ -10,8 +10,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import math
+import os
 import re
+import stat
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -54,6 +57,10 @@ class TermRecord:
     next_review: Optional[date]
     related: str
     notes: str
+    track: str = "A/B"
+    last_score: Optional[int] = None
+    last_session: str = ""
+    applied_sessions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,19 @@ class Candidate:
     challenge: bool
     suggested_level: int
     reason: str
+
+
+@dataclass(frozen=True)
+class GradedQuestion:
+    number: int
+    domain: str
+    track: str
+    level: int
+    primary_terms: tuple[str, ...]
+    related_terms: tuple[str, ...]
+    score: int
+    good_point: str
+    review_focus: str
 
 
 def split_markdown_row(line: str) -> list[str]:
@@ -140,6 +160,16 @@ def load_terms(root: Path) -> dict[str, TermRecord]:
         score = as_int(row.get("Score", ""), -1)
         if score < 0:
             continue
+        last_session = row.get("Last Session", "")
+        if last_session == "—":
+            last_session = ""
+        applied_sessions = tuple(
+            value.strip()
+            for value in row.get("Applied Sessions", "").split(",")
+            if value.strip() and value.strip() != "—"
+        )
+        if not applied_sessions and last_session:
+            applied_sessions = (last_session,)
         result[row["Term"]] = TermRecord(
             term=row["Term"],
             domain=row["Domain"],
@@ -151,6 +181,14 @@ def load_terms(root: Path) -> dict[str, TermRecord]:
             next_review=as_date(row.get("Next Review", "")),
             related=row.get("Related", ""),
             notes=row.get("Notes", ""),
+            track=row.get("Track", "A/B") if row.get("Track", "A/B") in {"A", "A/B", "B"} else "A/B",
+            last_score=(
+                None
+                if as_int(row.get("Last Score", ""), -1) < 0
+                else max(0, min(100, as_int(row.get("Last Score", ""), -1)))
+            ),
+            last_session=last_session,
+            applied_sessions=applied_sessions,
         )
     return result
 
@@ -166,7 +204,7 @@ def merge_uncatalogued_terms(catalog: list[CatalogItem], terms: dict[str, TermRe
             CatalogItem(
                 term=record.term,
                 domain=record.domain,
-                track="B",
+                track=record.track,
                 importance=3,
                 entry_level=target_level(record.score),
                 diagnostic=False,
@@ -230,20 +268,450 @@ def next_interval(score: int, answer_score: int, level: int, stable_high_count: 
     return max(1, round(interval))
 
 
+def markdown_cell(value: object) -> str:
+    return str(value).replace("\n", " ").replace("|", "\\|").strip()
+
+
+def atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+        handle.write(text)
+        temporary = Path(handle.name)
+    os.chmod(temporary, mode)
+    os.replace(temporary, path)
+
+
+def _clean_term(value: str) -> str:
+    return value.strip().strip("`").strip()
+
+
+def parse_list_field(section: str, label: str) -> tuple[str, ...]:
+    match = re.search(rf"^- {re.escape(label)}:[ \t]*([^\r\n]*)$", section, flags=re.MULTILINE)
+    if not match:
+        return ()
+    inline = _clean_term(match.group(1))
+    if inline:
+        return (inline,)
+    values = []
+    for line in section[match.end() :].splitlines():
+        if not line.strip():
+            continue
+        item = re.match(r"^\s{2,}-\s+(.+?)\s*$", line)
+        if not item:
+            break
+        values.append(_clean_term(item.group(1)))
+    return tuple(value for value in values if value)
+
+
+def _first_feedback_bullet(section: str, heading: str) -> str:
+    match = re.search(rf"^#### {re.escape(heading)}[ \t]*$", section, flags=re.MULTILINE)
+    if not match:
+        return ""
+    for line in section[match.end() :].splitlines():
+        if line.startswith("#### ") or line.startswith("### "):
+            break
+        bullet = re.match(r"^-\s+(.+?)\s*$", line)
+        if bullet:
+            return bullet.group(1).strip()
+    return ""
+
+
+def session_bounds(text: str, session_number: int) -> tuple[int, int]:
+    headings = list(re.finditer(r"^## Session (\d+)[ \t]*$", text, flags=re.MULTILINE))
+    for index, heading in enumerate(headings):
+        if int(heading.group(1)) != session_number:
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        return heading.start(), end
+    raise ValueError(f"Session {session_number} not found")
+
+
+def parse_graded_session(text: str, session_number: int) -> tuple[str, list[GradedQuestion]]:
+    start, end = session_bounds(text, session_number)
+    session = text[start:end]
+    status_match = re.search(r"^- Status:[ \t]*(\S+)[ \t]*$", session, flags=re.MULTILINE)
+    if not status_match:
+        raise ValueError(f"Session {session_number} has no Status")
+    status = status_match.group(1)
+    question_headings = list(re.finditer(r"^### Q(\d+)[ \t]*$", session, flags=re.MULTILINE))
+    questions: list[GradedQuestion] = []
+    seen_primary: set[str] = set()
+    for index, heading in enumerate(question_headings):
+        question_end = question_headings[index + 1].start() if index + 1 < len(question_headings) else len(session)
+        block = session[heading.start() : question_end]
+        domain_match = re.search(r"^- Domain:[ \t]*(.+?)[ \t]*$", block, flags=re.MULTILINE)
+        track_match = re.search(r"^- Track:[ \t]*(A/B|A|B)[ \t]*$", block, flags=re.MULTILINE)
+        level_match = re.search(r"^- Level:[ \t]*([1-6])[ \t]*$", block, flags=re.MULTILINE)
+        score_match = re.search(
+            r"^Score:[ \t]*(\d{1,3})[ \t]*/[ \t]*100[ \t]*$",
+            block,
+            flags=re.MULTILINE,
+        )
+        primary = parse_list_field(block, "Primary Terms")
+        if not primary:
+            legacy = parse_list_field(block, "Terms")
+            primary = legacy
+        related = parse_list_field(block, "Related Terms")
+        if not all((domain_match, track_match, level_match, score_match, primary)):
+            raise ValueError(f"Q{heading.group(1)} is missing metadata or Score")
+        score = int(score_match.group(1))
+        if not 0 <= score <= 100:
+            raise ValueError(f"Q{heading.group(1)} has an invalid Score")
+        duplicates = seen_primary.intersection(primary)
+        if duplicates:
+            raise ValueError(f"Primary Terms repeated in one session: {', '.join(sorted(duplicates))}")
+        seen_primary.update(primary)
+        questions.append(
+            GradedQuestion(
+                number=int(heading.group(1)),
+                domain=domain_match.group(1).strip(),
+                track=track_match.group(1),
+                level=int(level_match.group(1)),
+                primary_terms=primary,
+                related_terms=related,
+                score=score,
+                good_point=_first_feedback_bullet(block, "良かった点"),
+                review_focus=_first_feedback_bullet(block, "次回確認する観点"),
+            )
+        )
+    if not questions:
+        raise ValueError(f"Session {session_number} has no questions")
+    return status, questions
+
+
+def render_terms(records: dict[str, TermRecord]) -> str:
+    lines = [
+        "# 語句・概念ごとの理解度",
+        "",
+        "`Score` は現在の総合理解度、`Average` は過去の問題点の平均です。日付は `YYYY-MM-DD`、未設定値は `—` とします。`Applied Sessions` は採点の二重反映を防ぐ台帳です。",
+        "",
+        "| Term | Domain | Track | Score | Last Studied | Last Session | Applied Sessions | Attempts | Average | Last Score | Last Level | Next Review | Related | Notes |",
+        "|---|---|---|---:|---|---|---|---:|---:|---:|---:|---|---|---|",
+    ]
+    for record in records.values():
+        values = [
+            record.term,
+            record.domain,
+            record.track,
+            record.score,
+            record.last_studied.isoformat() if record.last_studied else "—",
+            record.last_session or "—",
+            ", ".join(record.applied_sessions) or "—",
+            record.attempts,
+            record.average,
+            record.last_score if record.last_score is not None else "—",
+            record.last_level,
+            record.next_review.isoformat() if record.next_review else "—",
+            record.related or "—",
+            record.notes or "—",
+        ]
+        lines.append("| " + " | ".join(markdown_cell(value) for value in values) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def update_term_records(
+    root: Path,
+    study_date: date,
+    session_number: int,
+    questions: list[GradedQuestion],
+    catalog: list[CatalogItem],
+) -> dict[str, TermRecord]:
+    records = load_terms(root)
+    catalog_by_term = {item.term: item for item in catalog}
+    session_key = f"{study_date.isoformat()}#{session_number}"
+    for question in questions:
+        for term in question.primary_terms:
+            old = records.get(term)
+            if not old or session_key in old.applied_sessions or not old.last_session:
+                continue
+            try:
+                last_day_text, last_number_text = old.last_session.rsplit("#", 1)
+                last_order = (datetime.strptime(last_day_text, "%Y-%m-%d").date(), int(last_number_text))
+            except (ValueError, TypeError):
+                continue
+            if last_order > (study_date, session_number):
+                raise ValueError(
+                    f"{term} already contains newer evidence from {old.last_session}; record sessions chronologically"
+                )
+    for question in questions:
+        for term in question.primary_terms:
+            old = records.get(term)
+            if old and session_key in old.applied_sessions:
+                continue
+            old_score = old.score if old else None
+            old_attempts = old.attempts if old else 0
+            new_score = updated_mastery(old_score, old_attempts, question.score, question.level)
+            new_attempts = old_attempts + 1
+            old_total = (old.average * old_attempts) if old else 0
+            new_average = round((old_total + question.score) / new_attempts)
+            stable_high = 2 if old and old.last_score is not None and old.last_score >= 90 and question.score >= 90 else 0
+            interval = next_interval(new_score, question.score, question.level, stable_high)
+            catalog_item = catalog_by_term.get(term)
+            track = catalog_item.track if catalog_item else question.track
+            related = catalog_item.related if catalog_item else " / ".join(question.related_terms)
+            note_parts = [part for part in (question.good_point, question.review_focus) if part]
+            notes = " / ".join(note_parts) if note_parts else (old.notes if old else "")
+            records[term] = TermRecord(
+                term=term,
+                domain=question.domain,
+                score=new_score,
+                last_studied=study_date,
+                attempts=new_attempts,
+                average=new_average,
+                last_level=question.level,
+                next_review=study_date + timedelta(days=interval),
+                related=related,
+                notes=notes,
+                track=track,
+                last_score=question.score,
+                last_session=session_key,
+                applied_sessions=(old.applied_sessions if old else ()) + (session_key,),
+            )
+    atomic_write(root / "progress" / "terms.md", render_terms(records))
+    return records
+
+
 def recent_domain_counts(root: Path, limit_sessions: int = 5) -> dict[str, int]:
     session_files = sorted((root / "sessions").glob("*.md"), reverse=True)
     counts: dict[str, int] = {}
     sessions_seen = 0
     for path in session_files:
         text = path.read_text(encoding="utf-8")
-        sections = re.split(r"(?=^## Session \d+\s*$)", text, flags=re.MULTILINE)
+        sections = re.split(r"(?=^## Session \d+[ \t]*$)", text, flags=re.MULTILINE)
         for section in reversed(sections[1:]):
-            for domain in re.findall(r"^- Domain:\s*(.+?)\s*$", section, flags=re.MULTILINE):
+            for domain in re.findall(r"^- Domain:[ \t]*(.+?)[ \t]*$", section, flags=re.MULTILINE):
                 counts[domain] = counts.get(domain, 0) + 1
             sessions_seen += 1
             if sessions_seen >= limit_sessions:
                 return counts
     return counts
+
+
+def all_scored_questions(root: Path) -> list[tuple[date, int, GradedQuestion]]:
+    results: list[tuple[date, int, GradedQuestion]] = []
+    for path in sorted((root / "sessions").glob("*.md")):
+        study_date = as_date(path.stem)
+        if study_date is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        numbers = [
+            int(match.group(1))
+            for match in re.finditer(r"^## Session (\d+)[ \t]*$", text, flags=re.MULTILINE)
+        ]
+        for number in numbers:
+            try:
+                status, questions = parse_graded_session(text, number)
+            except ValueError:
+                continue
+            if status not in {"grading", "graded"}:
+                continue
+            results.extend((study_date, number, question) for question in questions)
+    return results
+
+
+def domain_level(score: int) -> str:
+    if score < 40:
+        return "Beginner"
+    if score < 70:
+        return "Intermediate"
+    if score < 85:
+        return "Proficient"
+    return "Advanced"
+
+
+def render_domains(
+    existing_rows: list[dict[str, str]],
+    records: dict[str, TermRecord],
+    scored: list[tuple[date, int, GradedQuestion]],
+    today: date,
+) -> str:
+    domain_order = [row["Domain"] for row in existing_rows]
+    for record in records.values():
+        if record.domain not in domain_order:
+            domain_order.append(record.domain)
+    lines = [
+        "# 分野ごとの理解度",
+        "",
+        "語句の現在スコアと直近セッションの成績から推定します。履歴がない分野は `Unassessed` とし、0点とは扱いません。",
+        "",
+        "| Domain | Score | Level | Last Studied | Attempts | Due Terms | Notes |",
+        "|---|---:|---|---|---:|---:|---|",
+    ]
+    existing_by_domain = {row["Domain"]: row for row in existing_rows}
+    for domain in domain_order:
+        term_records = [record for record in records.values() if record.domain == domain]
+        domain_questions = [(day, question) for day, _, question in scored if question.domain == domain]
+        if not term_records and not domain_questions:
+            row = existing_by_domain.get(domain, {})
+            values = [domain, "—", "Unassessed", "—", 0, 0, row.get("Notes", "未評価")]
+        else:
+            term_mean = sum(record.score for record in term_records) / len(term_records) if term_records else None
+            recent = [question.score for _, question in domain_questions[-5:]]
+            recent_mean = sum(recent) / len(recent) if recent else None
+            if term_mean is not None and recent_mean is not None:
+                score = round(term_mean * 0.70 + recent_mean * 0.30)
+            else:
+                score = round(term_mean if term_mean is not None else recent_mean or 0)
+            dates = [record.last_studied for record in term_records if record.last_studied]
+            dates.extend(day for day, _ in domain_questions)
+            last_studied = max(dates).isoformat() if dates else "—"
+            due = sum(bool(record.next_review and record.next_review <= today) for record in term_records)
+            prefix = f"Provisional（{len(domain_questions)}問）: " if len(domain_questions) < 2 else ""
+            weakest = min(term_records, key=lambda record: record.score).term if term_records else "—"
+            strongest = max(term_records, key=lambda record: record.score).term if term_records else "—"
+            notes = f"{prefix}強み候補 {strongest} / 次の確認 {weakest}"
+            values = [domain, score, domain_level(score), last_studied, len(domain_questions), due, notes]
+        lines.append("| " + " | ".join(markdown_cell(value) for value in values) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def update_domains(
+    root: Path,
+    records: dict[str, TermRecord],
+    study_date: date,
+) -> dict[str, int]:
+    existing = read_table(root / "progress" / "domains.md", "Domain")
+    scored = all_scored_questions(root)
+    atomic_write(root / "progress" / "domains.md", render_domains(existing, records, scored, study_date))
+    result: dict[str, int] = {}
+    for row in read_table(root / "progress" / "domains.md", "Domain"):
+        score = as_int(row.get("Score", ""), -1)
+        if score >= 0:
+            result[row["Domain"]] = score
+    return result
+
+
+def render_history(rows: list[dict[str, str]]) -> str:
+    headers = [
+        "Date",
+        "Session",
+        "Questions",
+        "Average",
+        "Subject B",
+        "Weak Domains",
+        "Strong Domains",
+        "Next Focus",
+        "Session File",
+    ]
+    lines = [
+        "# 学習履歴",
+        "",
+        "セッションごとの結果を時系列で記録します。`Subject B` は科目B中心問題の比率です。",
+        "",
+        "| " + " | ".join(headers) + " |",
+        "|---|---|---:|---:|---:|---|---|---|---|",
+    ]
+    for row in rows:
+        lines.append("| " + " | ".join(markdown_cell(row.get(header, "")) for header in headers) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def update_history(
+    root: Path,
+    study_date: date,
+    session_number: int,
+    questions: list[GradedQuestion],
+    records: dict[str, TermRecord],
+) -> dict[str, object]:
+    rows = read_table(root / "progress" / "history.md", "Date")
+    average = round(sum(question.score for question in questions) / len(questions))
+    b_ratio = round(100 * sum(question.track == "B" for question in questions) / len(questions))
+    by_domain: dict[str, list[int]] = {}
+    for question in questions:
+        by_domain.setdefault(question.domain, []).append(question.score)
+    domain_averages = {domain: round(sum(scores) / len(scores)) for domain, scores in by_domain.items()}
+    weak = [domain for domain, score in domain_averages.items() if score < 60]
+    strong = [domain for domain, score in domain_averages.items() if score >= 85]
+    weakest_questions = sorted(questions, key=lambda question: question.score)[:2]
+    focus = "、".join(question.primary_terms[0] for question in weakest_questions)
+    review_dates = [
+        records[term].next_review
+        for question in questions
+        for term in question.primary_terms
+        if term in records and records[term].next_review
+    ]
+    next_review = min(review_dates).isoformat() if review_dates else "—"
+    row = {
+        "Date": study_date.isoformat(),
+        "Session": str(session_number),
+        "Questions": str(len(questions)),
+        "Average": str(average),
+        "Subject B": f"{b_ratio}%",
+        "Weak Domains": "、".join(weak) or "—",
+        "Strong Domains": "、".join(strong) or "—",
+        "Next Focus": f"{focus}を{next_review}に復習",
+        "Session File": f"[sessions/{study_date.isoformat()}.md](../sessions/{study_date.isoformat()}.md#session-{session_number})",
+    }
+    replaced = False
+    for index, existing in enumerate(rows):
+        if existing.get("Date") == row["Date"] and existing.get("Session") == row["Session"]:
+            rows[index] = row
+            replaced = True
+            break
+    if not replaced:
+        rows.append(row)
+    atomic_write(root / "progress" / "history.md", render_history(rows))
+    return {
+        "average": average,
+        "weak": weak,
+        "strong": strong,
+        "next_review": next_review,
+    }
+
+
+def finalize_session(
+    path: Path,
+    session_number: int,
+    summary: dict[str, object],
+) -> None:
+    text = path.read_text(encoding="utf-8")
+    start, end = session_bounds(text, session_number)
+    session = text[start:end]
+    session = re.sub(
+        r"^- Status:[ \t]*\S+[ \t]*$",
+        "- Status: graded",
+        session,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    strong = "、".join(summary["strong"]) if summary["strong"] else "—"
+    weak = "、".join(summary["weak"]) if summary["weak"] else "—"
+    summary_text = (
+        f"## Session {session_number} Summary\n\n"
+        f"- Average: {summary['average']} / 100\n"
+        f"- Strong points: {strong}\n"
+        f"- Weak points: {weak}\n"
+        f"- Recommended next review: {summary['next_review']}\n"
+        "- Progress updated: terms.md / domains.md / history.md\n"
+    )
+    summary_pattern = re.compile(
+        rf"^## Session {session_number} Summary[ \t]*$.*\Z",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if summary_pattern.search(session):
+        session = summary_pattern.sub(summary_text.rstrip(), session)
+    else:
+        session = session.rstrip() + "\n\n" + summary_text.rstrip() + "\n"
+    atomic_write(path, text[:start] + session + text[end:])
+
+
+def record_progress(root: Path, study_date: date, session_number: int) -> dict[str, object]:
+    session_path = root / "sessions" / f"{study_date.isoformat()}.md"
+    if not session_path.exists():
+        raise ValueError(f"Session file not found: {session_path}")
+    text = session_path.read_text(encoding="utf-8")
+    status, questions = parse_graded_session(text, session_number)
+    if status == "cancelled":
+        raise ValueError("Cannot record a cancelled session")
+    if status not in {"grading", "graded"}:
+        raise ValueError("Set Session Status to grading after writing all scores, then run record")
+    catalog = load_catalog(root)
+    records = update_term_records(root, study_date, session_number, questions, catalog)
+    update_domains(root, records, study_date)
+    summary = update_history(root, study_date, session_number, questions, records)
+    finalize_session(session_path, session_number, summary)
+    return {**summary, "questions": len(questions), "session_path": session_path}
 
 
 def tie_break(term: str, today: date) -> float:
@@ -294,7 +762,7 @@ def build_candidates(
             unseen_bonus = 0
             due = bool(record.next_review and record.next_review <= today) or forgetting >= 30
             challenge = record.score >= 80
-            recent_penalty = 30 if elapsed == 0 and record.average >= 60 else 0
+            recent_penalty = 30 if elapsed == 0 and record.last_score is not None and record.last_score >= 60 else 0
             level = target_level(record.score, item.entry_level)
             if record.score < 60:
                 reason = f"理解度{record.score}の弱点を再構成"
@@ -501,7 +969,7 @@ def default_root() -> Path:
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plan adaptive security-specialist study topics from Markdown history.")
+    parser = argparse.ArgumentParser(description="Plan and record adaptive security-specialist study in Markdown.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     plan_parser = subparsers.add_parser("plan", help="Print a Markdown selection plan without changing files.")
     plan_parser.add_argument("--root", type=Path, default=default_root())
@@ -509,12 +977,37 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     plan_parser.add_argument("--count", type=int)
     plan_parser.add_argument("--focus", default="")
     plan_parser.add_argument("--mode", choices=["standard", "weak", "new", "subject-b", "light"], default="standard")
+    record_parser = subparsers.add_parser(
+        "record",
+        help="Idempotently update Markdown progress from an already-scored Session.",
+    )
+    record_parser.add_argument("--root", type=Path, default=default_root())
+    record_parser.add_argument("--date", type=as_date, required=True)
+    record_parser.add_argument("--session", type=int, required=True)
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     root = args.root.resolve()
+    if args.command == "record":
+        if args.date is None:
+            print("error: --date must use YYYY-MM-DD", file=sys.stderr)
+            return 2
+        if args.session < 1:
+            print("error: --session must be positive", file=sys.stderr)
+            return 2
+        try:
+            result = record_progress(root, args.date, args.session)
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        print(
+            f"Recorded {result['questions']} questions for {args.date.isoformat()} "
+            f"Session {args.session}; average={result['average']}; next_review={result['next_review']}"
+        )
+        return 0
+
     catalog = load_catalog(root)
     if not catalog:
         print(f"error: no concept catalog found under {root / 'references' / 'taxonomy.md'}", file=sys.stderr)

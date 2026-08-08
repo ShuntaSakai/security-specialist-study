@@ -20,16 +20,16 @@ security-specialist-study/
 └── skills/security-specialist-trainer/
     ├── SKILL.md                       # Codex Skill本体
     ├── agents/openai.yaml             # SkillのUIメタデータ
-    ├── scripts/study_helper.py         # 適応出題候補の決定支援
+    ├── scripts/study_helper.py         # 出題候補選択と採点結果の冪等反映
     └── tests/                          # 選択式・構造の回帰テスト
 ```
 
-学習の正本は `sessions/` と `progress/` のMarkdownです。補助スクリプトは候補の順位付けにだけ使い、学習履歴をJSONへ隠しません。
+学習の正本は `sessions/` と `progress/` のMarkdownです。補助スクリプトは候補の順位付けと、採点済みSessionからprogressへの冪等な反映を行います。学習履歴をJSONへ隠しません。
 
 ## 各Markdownの役割
 
 - `sessions/YYYY-MM-DD.md`: 問題、ユーザーの回答、問題別採点、短い模範説明を保存します。同じ日に複数回学習すると `Session 2`、`Session 3` と追記します。
-- `progress/terms.md`: 概念単位の現在スコア、平均点、出題回数、最終学習日、次回復習日、関連概念、弱点メモを保存します。
+- `progress/terms.md`: 概念単位の現在スコア、平均点、直近点、科目区分、出題回数、反映済みSession台帳、最終学習日、次回復習日、関連概念、弱点メモを保存します。
 - `progress/domains.md`: 分野単位の理解度を、語句スコアだけでなく直近の解答実績も含めて推定します。
 - `progress/history.md`: 各セッションの平均点、科目B比率、弱点、次の復習候補を時系列で保存します。
 - `references/taxonomy.md`: 出題分野、代表概念、科目B重要度、前提・関連関係を定義します。
@@ -79,7 +79,7 @@ python3 skills/security-specialist-trainer/scripts/study_helper.py plan \
 5. 対策とその理由
 6. 類似概念との差・限界
 
-問題別に点数、良かった点、足りない点、短い模範説明をセッションへ追記します。その後、`terms.md`、`domains.md`、`history.md` を同じ採点内容から更新します。低難易度での満点だけで応用力100とは見なさず、Level 1〜4の証拠スコアには上限を設けます。詳しい式は [references/scoring-rules.md](references/scoring-rules.md) にあります。
+問題別に点数、良かった点、足りない点、短い模範説明をセッションへ追記します。その後、`record` コマンドが各Markdownを原子的に書き換え、`terms.md`、`domains.md`、`history.md` 全体を冪等に更新します。途中停止時はStatusが `grading` に残り、再実行してもAttemptsや履歴行を重複させません。低難易度での満点だけで応用力100とは見なさず、Level 1〜4の証拠スコアには上限を設けます。詳しい式は [references/scoring-rules.md](references/scoring-rules.md) にあります。
 
 ## 復習タイミング
 
