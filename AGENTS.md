@@ -1,0 +1,5 @@
+# Repository instructions
+
+For requests to create, customize, grade, review, or report progress on 情報処理安全確保支援士（セキスペ）practice, read and follow `skills/security-specialist-trainer/SKILL.md` completely before acting. This includes natural requests such as「問題作って」「今日の問題」「復習したい」「採点して」「答え合わせ」「理解度見せて」「今の弱点」and close paraphrases.
+
+Treat this repository root as the study root. Keep `sessions/` and `progress/` in human-readable Markdown and preserve the schemas documented under `references/`.
