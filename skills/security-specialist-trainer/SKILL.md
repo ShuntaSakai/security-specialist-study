@@ -42,7 +42,7 @@ Use eight cross-domain Level 2–3 questions for an unassessed first session unl
 
 For each question:
 
-- Write the question text as regular Markdown directly below the metadata. Do not put question text inside an HTML comment.
+- Add a `### 問題` heading directly below the metadata, then write the question text as regular Markdown below that heading. Do not put question text inside an HTML comment.
 - Keep Domain, Primary Terms, Related Terms, Level, and Track visible as metadata. Write Primary Terms and Related Terms as one backtick-wrapped concept per nested Markdown list item; never join terms with `/` or another delimiter. Put only independently scored concepts in Primary Terms, use exact taxonomy spelling, and put supporting context in Related Terms.
 - Add an empty `### 回答` area with the standard placeholder comment.
 - Ask for explanation, causality, conditions, application, or comparison. Avoid pure term-to-definition recall unless Level 1 is justified.
@@ -51,7 +51,7 @@ For each question:
 - Avoid repeating materially identical wording from recent sessions.
 - Do not include answers or leading hints in the question file.
 
-After writing, verify the file, question count, unique numbering, metadata, visible question text, and answer placeholders. In chat, respond briefly with the absolute clickable session path, question count, and any requested emphasis. Do not duplicate all question text in chat.
+After writing, verify the file, question count, unique numbering, metadata, one `### 問題` heading per question, visible question text, and answer placeholders. In chat, respond briefly with the absolute clickable session path, question count, and any requested emphasis. Do not duplicate all question text in chat.
 
 ## Grade a session
 
