@@ -25,16 +25,14 @@
 - Level: 2
 - Track: B
 
-<!--
-問題文を書く。Markdownのレンダリングでは隠れるが、ソースを開けば読める。
--->
+問題文を書く。Markdownのレンダリングでも表示される。
 
 ### 回答
 
 <!-- この行の下に回答を書いてください -->
 ```
 
-問題文だけをコメント内へ置く。Domain、Primary Terms、Related Terms、Level、Trackは適応処理に必要なので可視メタデータとして残す。語句名自体に `/` を含められるよう、Primary TermsとRelated Termsは必ず上例のような**1語句1行のコード表記リスト**にする。区切り文字で1行へ連結しない。
+問題文は通常のMarkdownとして、メタデータの直下に置く。Domain、Primary Terms、Related Terms、Level、Trackは適応処理に必要なので可視メタデータとして残す。語句名自体に `/` を含められるよう、Primary TermsとRelated Termsは必ず上例のような**1語句1行のコード表記リスト**にする。区切り文字で1行へ連結しない。
 
 `Primary Terms` には、その問題で独立に採点する中心概念だけを書く。比較問題で両方を十分に問う場合は複数でもよいが、同じSession内で同じPrimary Termを2問へ割り当てない。補助的に触れるだけの概念は `Related Terms` へ分ける。カタログ掲載語句は `taxonomy.md` の綴りと完全一致させる。問題文には曖昧な「説明せよ」だけでなく、評価する観点を列挙する。
 
