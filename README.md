@@ -17,6 +17,7 @@ security-specialist-study/
 │   ├── taxonomy.md                   # 分野分類、出題候補、関連概念
 │   ├── scoring-rules.md               # 採点・理解度・復習間隔の規則
 │   └── session-format.md              # セッションMarkdownの形式
+├── 復習用/                            # 図解を含む、繰り返し使う復習ノート
 └── skills/security-specialist-trainer/
     ├── SKILL.md                       # Codex Skill本体
     ├── agents/openai.yaml             # SkillのUIメタデータ
@@ -32,6 +33,7 @@ security-specialist-study/
 - `progress/terms.md`: 概念単位の現在スコア、平均点、直近点、科目区分、出題回数、反映済みSession台帳、最終学習日、次回復習日、関連概念、弱点メモを保存します。
 - `progress/domains.md`: 分野単位の理解度を、語句スコアだけでなく直近の解答実績も含めて推定します。
 - `progress/history.md`: 各セッションの平均点、科目B比率、弱点、次の復習候補を時系列で保存します。
+- `復習用/*.md`: 複数の主体・処理順・分岐を図で確認した方がよいテーマを、Mermaid図として保存します。既存の図と同じ学習目的の図は重複作成しません。
 - `references/taxonomy.md`: 出題分野、代表概念、科目B重要度、前提・関連関係を定義します。
 - `references/scoring-rules.md`: 100点評価、理解度更新、難易度、忘却度、復習間隔の共通規則です。
 
@@ -65,7 +67,7 @@ security-specialist-study/
 
 ```bash
 python3 skills/security-specialist-trainer/scripts/study_helper.py plan \
-  --root . --date 2026-08-09
+  --root . --date YYYY-MM-DD
 ```
 
 ## 採点と理解度更新
@@ -79,7 +81,7 @@ python3 skills/security-specialist-trainer/scripts/study_helper.py plan \
 5. 対策とその理由
 6. 類似概念との差・限界
 
-問題別に点数、良かった点、足りない点、短い模範説明をセッションへ追記します。その後、`record` コマンドが各Markdownを原子的に書き換え、`terms.md`、`domains.md`、`history.md` 全体を冪等に更新します。途中停止時はStatusが `grading` に残り、再実行してもAttemptsや履歴行を重複させません。低難易度での満点だけで応用力100とは見なさず、Level 1〜4の証拠スコアには上限を設けます。詳しい式は [references/scoring-rules.md](references/scoring-rules.md) にあります。
+問題別に点数、良かった点、足りない点、短い模範説明をセッションへ追記します。内容に応じて、復習用のMermaid図も追加します。その後、`record` コマンドが `terms.md`、`domains.md`、`history.md` を冪等に更新し、最後にSessionを `graded` にします。途中停止時はStatusが `grading` に残り、再実行してもAttemptsや履歴行を重複させません。低難易度での満点だけで応用力100とは見なさず、Level 1〜4の証拠スコアには上限を設けます。詳しい式は [references/scoring-rules.md](references/scoring-rules.md) にあります。
 
 ## 復習タイミング
 
@@ -91,7 +93,7 @@ python3 skills/security-specialist-trainer/scripts/study_helper.py plan \
 2. Codexが `sessions/YYYY-MM-DD.md` に問題を作る。
 3. 各 `### 回答` の下へMarkdownで回答を書く。
 4. チャットで「採点して」と依頼する。
-5. 採点結果と3つのprogressファイルが更新される。
+5. 採点結果と3つのprogressファイルが更新され、必要に応じて `復習用/` に図解ノートが追加される。
 6. 翌日以降、再び「問題作って」と依頼する。
 
 分量や傾向は自然文で変更できます。例: 「今日は3問」「Web系を多めに」「新しい概念多め」「科目Bのログ分析っぽく」。
