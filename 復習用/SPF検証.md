@@ -6,14 +6,14 @@ sequenceDiagram
     participant Receiver as 受信メールサーバ
     participant DNS as DNS
 
-    Sender->>Receiver: SMTP接続 / MAIL FROM:<user@example.jp>
-    Receiver->>DNS: example.jp の SPF用TXTレコードを照会
-    DNS-->>Receiver: 送信を認可するIP条件 (ip4, a, mx など)
-    Receiver->>Receiver: 接続元IP 192.0.2.25 が条件に一致するか判定
+    Sender->>Receiver: 送信MTAがSMTP接続し、MAIL FROMを通知する
+    Receiver->>DNS: 受信メールサーバがexample.jpのSPF用TXTを照会する
+    DNS-->>Receiver: DNSが送信を認可するIP条件を返す
+    Receiver->>Receiver: 受信メールサーバが接続元IPと条件を照合する
     alt 一致
-        Receiver-->>Sender: SPF pass
+        Receiver-->>Sender: 受信メールサーバがSPF passと判定する
     else 不一致
-        Receiver-->>Sender: SPF fail / softfail など
+        Receiver-->>Sender: 受信メールサーバがSPF failまたはsoftfailと判定する
     end
 
     Note over Receiver: SPFはenvelope-fromの送信経路を検証する
