@@ -7,3 +7,5 @@ Treat this repository root as the study root. Keep `sessions/` and `progress/` i
 Only push changes to a remote when the user explicitly asks to push (for example, 「プッシュして」). Do not infer permission to push from requests to edit, commit, or finish work.
 
 Write commit messages in Japanese.
+
+When implementation changes affect documented behavior, commands, configuration, directory structure, or workflows, update every affected document (including `README.md`, `references/`, and review notes) in the same change.
