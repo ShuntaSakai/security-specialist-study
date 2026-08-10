@@ -5,3 +5,5 @@ For requests to create, customize, grade, review, or report progress on 情報�
 Treat this repository root as the study root. Keep `sessions/` and `progress/` in human-readable Markdown and preserve the schemas documented under `references/`.
 
 Only push changes to a remote when the user explicitly asks to push (for example, 「プッシュして」). Do not infer permission to push from requests to edit, commit, or finish work.
+
+Write commit messages in Japanese.
