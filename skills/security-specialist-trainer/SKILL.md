@@ -62,19 +62,23 @@ Perform these steps in order:
 3. If any answer is blank, do not fabricate or partially finalize scores. Identify the unanswered question numbers and leave progress unchanged.
 4. Score each answer from 0 to 100 for conceptual meaning. Select only applicable rubric dimensions: definition, principle, conditions, scenario/application, countermeasures with reasons, comparison/limits. Normalize applicable weights to 100.
 5. Change the Session Status to `grading`. Upsert concise feedback under each answer: score, good points, missing or mistaken points, a short model explanation, and one next-review focus. On recovery, replace an existing grading block instead of appending a duplicate.
-6. Run the idempotent recorder only after every question has one valid score:
+6. For each graded answer, decide whether a Mermaid diagram would make a difficult flow materially easier to review. Create one only for concepts involving multiple actors, ordered processing steps, branching conditions, trust/key/data movement, or incident/control sequences; do not create diagrams for isolated definitions or relationships that a short sentence makes clear.
+   - Before creating anything, inspect every Markdown file under `復習用/`. If an existing diagram already covers the same learning goal and flow (including a more detailed version), reuse it and do not create a duplicate.
+   - For a genuinely new diagram, create `復習用/<topic>.md` with a descriptive, stable topic name and a fenced `mermaid` diagram. Use the diagram type that best fits the flow (`flowchart`, `sequenceDiagram`, or `stateDiagram-v2`), label actors, inputs, conditions, and outcomes clearly, and keep it compact enough for review.
+   - Treat these diagrams as durable review notes: make them technically correct and standalone, and do not alter an existing diagram merely to cover an unrelated question.
+7. Run the idempotent recorder only after every question has one valid score:
 
    ```bash
    python3 skills/security-specialist-trainer/scripts/study_helper.py record \
      --root . --date YYYY-MM-DD --session N
    ```
 
-7. Let the recorder update `terms.md`, recompute `domains.md`, upsert `history.md`, append or replace the Session Summary, and change Status to `graded` last. It uses `Applied Sessions` to avoid double-counting after interruption. Record overlapping Primary Terms in chronological Session order.
-8. If the recorder fails, leave Status as `grading`, report the error, and retry after correcting it. Never claim progress was updated and never set `graded` manually before all three progress files succeed.
+8. Let the recorder update `terms.md`, recompute `domains.md`, upsert `history.md`, append or replace the Session Summary, and change Status to `graded` last. It uses `Applied Sessions` to avoid double-counting after interruption. Record overlapping Primary Terms in chronological Session order.
+9. If the recorder fails, leave Status as `grading`, report the error, and retry after correcting it. Never claim progress was updated and never set `graded` manually before all three progress files succeed.
 
 Use `../../references/scoring-rules.md` as the arithmetic authority. Update only Primary Terms numerically; Related Terms remain context until directly assessed. Keep all three progress files mutually consistent: the same date, domain name, question count, average, and next-review conclusions must agree. If the recorder is unavailable, reproduce its ordering and idempotency rules manually and mark `graded` only as the final write.
 
-After editing, reread the graded Session and the three progress files. Confirm one score per question, a correct arithmetic average, no duplicate term row, and no duplicate history row. In chat, report the session average, strongest point, most important gap, and next review date; link the session file.
+After editing, reread the graded Session and the three progress files. Confirm one score per question, a correct arithmetic average, no duplicate term row, and no duplicate history row. If a new review diagram was created, render or otherwise verify that its Mermaid syntax is valid before reporting it. In chat, report the session average, strongest point, most important gap, next review date, and links to any newly created review diagrams; link the session file.
 
 ## Report progress
 
