@@ -9,3 +9,5 @@ Only push changes to a remote when the user explicitly asks to push (for example
 Write commit messages in Japanese.
 
 When implementation changes affect documented behavior, commands, configuration, directory structure, or workflows, update every affected document (including `README.md`, `references/`, and review notes) in the same change.
+
+When work reveals a reusable lesson that improves future accuracy, safety, clarity, or efficiency, update the relevant skill, instruction, reference, or documentation in the same change. Do not turn one-off task details or temporary circumstances into permanent rules.
