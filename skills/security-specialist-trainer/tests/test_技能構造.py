@@ -19,6 +19,10 @@ class 技能構造テスト(unittest.TestCase):
             self.skill / "SKILL.md",
             self.skill / "agents" / "openai.yaml",
             self.root / "README.md",
+            self.root / "docs" / "使い方.md",
+            self.root / "docs" / "リポジトリ構成.md",
+            self.root / "docs" / "出題・採点ロジック.md",
+            self.root / "docs" / "開発・テスト.md",
             self.root / "progress" / "terms.md",
             self.root / "progress" / "domains.md",
             self.root / "progress" / "history.md",
@@ -29,6 +33,19 @@ class 技能構造テスト(unittest.TestCase):
         self.assertEqual([], [str(path) for path in expected if not path.is_file()])
         self.assertTrue((self.root / "sessions" / "理解・応用問題").is_dir())
         self.assertTrue((self.root / "sessions" / "暗記語句問題").is_dir())
+
+    def test_ルート説明書から詳細文書を参照できる(self) -> None:
+        readme = (self.root / "README.md").read_text(encoding="utf-8")
+        document_paths = (
+            "docs/使い方.md",
+            "docs/リポジトリ構成.md",
+            "docs/出題・採点ロジック.md",
+            "docs/開発・テスト.md",
+        )
+        for relative_path in document_paths:
+            with self.subTest(relative_path=relative_path):
+                self.assertIn(f"]({relative_path})", readme)
+                self.assertTrue((self.root / relative_path).is_file())
 
     def test_技能のフロントマターは必要項目だけを持つ(self) -> None:
         text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
@@ -155,9 +172,11 @@ class 技能構造テスト(unittest.TestCase):
                 )
 
         agents = (self.root / "AGENTS.md").read_text(encoding="utf-8")
-        readme = (self.root / "README.md").read_text(encoding="utf-8")
+        development_guide = (
+            self.root / "docs" / "開発・テスト.md"
+        ).read_text(encoding="utf-8")
         self.assertIn("test file names", agents)
-        self.assertIn("テストファイル名", readme)
+        self.assertIn("テストファイル名", development_guide)
 
 
 if __name__ == "__main__":
