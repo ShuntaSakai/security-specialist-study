@@ -66,7 +66,7 @@ The planner treats the existing overall score, mode-specific scores, attempts, l
 
 Set `Mode: term-recall`, `Level: 1`, and `Track A/B Target: 40% / 60%`. Use `A = floor(count * 0.40)` and assign every remainder to B, so 5 questions are A2/B3 and 10 are A4/B6. For this mode, taxonomy Track `B` stays Session Track `B`; taxonomy Track `A` or `A/B` uses Session Track `A`. The progress catalog Track remains unchanged.
 
-Use the short question emitted in the plan, normally「`用語`とは何ですか？意味・目的・重要な特徴を、自分の言葉で簡潔に説明してください。」 Do not turn either Track into a scenario, comparison, countermeasure, residual-risk, or long-form question. One concise explanation is enough. The normal-session rule against pure definition recall does not apply here.
+Use the short question emitted in the plan, normally「`用語`とは何ですか？意味・目的・重要な特徴を簡潔に説明してください。」 Do not turn either Track into a scenario, comparison, countermeasure, residual-risk, or long-form question. One concise explanation is enough. The normal-session rule against pure definition recall does not apply here.
 
 ## Grade a session
 

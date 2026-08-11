@@ -178,7 +178,11 @@ class 学習支援テスト(unittest.TestCase):
 
     def test_暗記語句問題は短い定義説明形式になる(self) -> None:
         question = study_helper.term_recall_question("CSRF")
-        self.assertTrue(question.startswith("CSRFとは何ですか？"))
+        self.assertEqual(
+            "CSRFとは何ですか？意味・目的・重要な特徴を簡潔に説明してください。",
+            question,
+        )
+        self.assertNotIn("自分の言葉で", question)
         self.assertEqual(1, question.count("？"))
         self.assertNotIn("シナリオ", question)
         self.assertEqual("短いシナリオ", study_helper.suggested_form(4))
