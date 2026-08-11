@@ -37,6 +37,20 @@
 
 採点は意味内容で行う。同義表現を認め、問題が求めていない専門語の欠如だけで減点しない。重大な因果逆転、攻撃者と被害者の混同、安全でない対策の推奨は大きく減点する。回答が空なら採点せず、セッションを未採点のままにする。
 
+### 暗記語句問題の採点
+
+`Mode: term-recall` では、通常説明問題とは異なる次の能力を0〜100点で意味ベース評価する。
+
+| 観点 | 基本配点 | 評価する内容 |
+|---|---:|---|
+| 定義 | 50 | その語句が何であるかを本質的に説明できる |
+| 目的・役割 | 30 | 何のためのものか、何に関係するかを説明できる |
+| 重要な特徴・仕組み | 20 | 語句を識別する重要点や、必要な範囲の仕組みを説明できる |
+
+語句によって該当しない観点は、通常問題と同様に残りを100点へ正規化する。短い回答でも本質が正しければ評価し、問題で要求していないシナリオ適用、高度な対策、残存リスク、長い比較がないことを減点理由にしない。単純な文字列一致や模範解答との表層一致では採点しない。
+
+各1問で評価するPrimary Termは1語句に限る。taxonomyの表で一つのTermとして定義される複合名称は1語句とみなすが、独立した複数語句に一つのScoreを共用しない。
+
 各問題には以下を短く追記する。
 
 - `Score: n / 100`
@@ -68,9 +82,13 @@ new_score = round(old_score * (1 - alpha) + e * alpha)
 
 `Last Score` には直近問題の得点、`Last Session` には最新の `YYYY-MM-DD#Session番号`、`Applied Sessions` には反映済みSessionキーを保存する。Applied Sessionsに含まれるSessionを再処理するときはScore・Average・Attemptsを再更新しない。より新しいSessionを反映済みの概念へ古いSessionを後から適用しようとした場合は停止し、時系列順での処理を求める。直近得点が不明な旧データには同日再出題ペナルティを掛けない。
 
+`Score` と `Attempts` は両モードを統合した従来どおりの値とする。さらに任意列 `Recall Score` / `Recall Attempts` と `Explanation Score` / `Explanation Attempts` で能力差を保持する。暗記語句問題はRecall側、通常説明問題はExplanation側だけを更新する。Recall Scoreは語句想起能力そのものを0〜100で表すためLevel 1の70点上限を掛けないが、総合Scoreへ取り込む証拠には従来どおりLevel 1上限70を掛ける。Explanation Scoreは通常のlevel capを使う。
+
+旧 `terms.md` にモード別列がなければ、既存のScoreとAttemptsをExplanation側の初期値として読み、Recall側は未評価とする。Modeがない旧Session、または `diagnosis` / `adaptive` など既存ModeのSessionも通常説明問題として扱う。未評価は0点ではない。
+
 ## 分野理解度の更新
 
-分野スコアは、所属語句の現在スコア70%、その分野の直近5問の得点30%を目安にする。証拠が2問未満なら `Provisional` と注記する。未評価概念を0点にしない。
+分野スコアは、所属語句の現在スコア70%、その分野の直近5問のlevel cap後の証拠点30%を目安にする。直近証拠も `min(問題点, level_cap[Level])` とし、Level 1の暗記語句問題100点は70点として分野へ反映する。Session平均とRecall Scoreには採点の生点を維持する。証拠が2問未満なら `Provisional` と注記し、未評価概念を0点にしない。
 
 | Score | Level |
 |---:|---|
@@ -93,7 +111,9 @@ new_score = round(old_score * (1 - alpha) + e * alpha)
 | 75〜89 | 12日 |
 | 90〜100 | 30日 |
 
-直近得点が60未満なら半分（最低1日）、90以上かつLevel 4以上なら1.25倍、Level 5以上で高得点が2回以上続くなら1.5倍まで延ばす。`Next Review = Last Studied + 補正後日数`。
+直近得点が60未満なら半分（最低1日）、90以上かつLevel 4以上なら1.25倍、直前と今回がともにLevel 5以上かつ90点以上なら1.5倍まで延ばす。Level 1暗記語句問題の高得点はLevel 5以上の連続成功へ数えない。`Next Review = Last Studied + 補正後日数`。
+
+`Last Studied`、`Last Score`、`Next Review` は両モード共通で更新する。したがって暗記語句問題にも同じ忘却度・復習期限を適用し、一方の形式で得た新しい証拠をもう一方の形式の候補選択にも使う。モード別Scoreは能力差の把握に使い、共通のNext Reviewを置き換える別状態は作らない。
 
 選択時の忘却度は次を目安に0〜40へ丸める。
 
@@ -106,10 +126,13 @@ forgetting = min(40, 35 * elapsed / 基本間隔)
 
 ## 出題優先度と配分
 
+一度に生成する問題数は1〜30問とする。範囲外は候補配分へ丸めず、入力エラーとして扱う。
+
 ```text
 priority = weakness + forgetting + subject_b + unseen + relation + balance - recent_penalty
 
-weakness      = 0.45 * (100 - Score)                 # 未学習は別扱い
+mode_score    = 通常説明ではExplanation Score、暗記語句ではRecall Score
+weakness      = 0.45 * (100 - mode_score)            # 自己モード未評価は別扱い
 forgetting    = 0〜40
 subject_b     = 科目B中心15、A/B 10、科目A 3
 unseen        = 未学習20
@@ -118,6 +141,26 @@ balance       = 最近少ない分野へ0〜10
 recent_penalty= 当日学習済みかつLast Scoreが60点以上なら30
 ```
 
+直近5SessionのPrimary Termsも数え、同じ語句の最近の出題には0〜24の抑制を掛ける。当日出題は重く数えるが、低得点・期限超過・強い関連弱点がある語句を永久に除外はしない。
+
+通常説明の弱点枠・出題Level・発展判定には `Explanation Score`、暗記語句の弱点枠・定着判定には `Recall Score` を使う。自己モードが未評価なら `unseen` として扱う。Mode別列がない旧progressは読み込み時に従来のScoreとAttemptsをExplanation側へ引き継ぐため、通常問題の既存挙動を維持する。共通のScore、Next Review、忘却度は両モードの統合値として引き続き参照する。
+
+モード間の弱点は次の加点で相互に接続する。自己モードの弱点度は上の `weakness` で既に評価するため、同じMode Scoreを重複加点しない。
+
+```text
+暗記語句候補:
+  Recall未評価なら unseen として扱う
+  Explanation Scoreがあれば 0.20 * (100 - Explanation Score)
+
+通常説明候補:
+  Explanation未評価なら unseen として扱う
+  Recall Score < 60 なら 0.25 * (100 - Recall Score)
+```
+
+これにより、通常説明で弱かった語句を基礎想起へ戻し、暗記語句で弱かった語句を原理・条件・対策・シナリオへ進める。Recallは高いがExplanationが低い場合は「定義は想起できるが応用が弱い」、逆なら「応用時には扱えるが定義想起が弱い」として優先度へ反映する。
+
 通常5問なら「弱点2、復習期1、新規1、発展1」を基準にする。問題数に応じて40% / 25% / 20% / 15%へ丸め、候補不足時は優先度順に補う。同一分野の選択が増えるごとに小さな重複ペナルティを付ける。明示された「Webだけ」「新規多め」などの希望はこの配分より優先する。
 
 科目B関連は70〜85%を目安にするが、初回診断の分野網羅や明示された分野指定を優先してよい。単純なランダム抽出は禁止し、同点の入れ替えにだけ日付ベースの決定的なタイブレークを使う。
+
+暗記語句モードだけは科目B 70〜85%規則を使わず、Aを `floor(問題数 × 0.40)`、Bを残りとして厳密に配分する。taxonomyのTrack `B` はB、`A` と `A/B` は暗記語句Session上のAへ割り当てる。どちらもLevel 1の短い語句説明形式を維持する。
