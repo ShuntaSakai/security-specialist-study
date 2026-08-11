@@ -8,6 +8,8 @@ Only push changes to a remote when the user explicitly asks to push (for example
 
 Write commit messages in Japanese.
 
+Write Python test file names after the required `test_` prefix, test class names, and `test_` method names in Japanese so verbose local and CI logs describe the verified behavior in Japanese. Keep the `test_` prefix required by `unittest` discovery.
+
 When implementation changes affect documented behavior, commands, configuration, directory structure, or workflows, update every affected document (including `README.md`, `references/`, and review notes) in the same change.
 
 When work reveals a reusable lesson that improves future accuracy, safety, clarity, or efficiency, update the relevant skill, instruction, reference, or documentation in the same change. Do not turn one-off task details or temporary circumstances into permanent rules.
