@@ -1,6 +1,6 @@
 ---
 name: security-specialist-trainer
-description: Markdown-based adaptive trainer for Japan's Registered Information Security Specialist exam (情報処理安全確保支援士・セキスペ), emphasizing written explanations and Subject B scenarios. Use when the user asks to create or customize セキスペ practice questions (問題作って、今日の問題、復習、科目B、特定分野), grade or review answers (採点、答え合わせ、レビュー), or report mastery, strengths, weaknesses, and due reviews (理解度、今日の結果、弱点).
+description: Markdown-based adaptive trainer for Japan's Registered Information Security Specialist exam (情報処理安全確保支援士・セキスペ), covering short term-recall practice, written explanations, and Subject B scenarios. Use when the user asks to create or customize セキスペ practice questions (問題作って、今日の問題、暗記単語問題、暗記語句問題、復習、科目B、特定分野), grade or review answers (採点、答え合わせ、レビュー), or report mastery, strengths, weaknesses, and due reviews (理解度、今日の結果、弱点).
 ---
 
 # Security Specialist Trainer
@@ -11,7 +11,7 @@ Build recall and explanation skill from Markdown history. Treat the repository c
 
 Choose one workflow:
 
-- Create questions: follow **Generate a session**.
+- Create questions: follow **Generate a session**. Requests such as「暗記単語問題作って」「暗記語句問題作って」「単語問題10問」「暗記問題20問作って」select term-recall mode.
 - Grade answers: follow **Grade a session**.
 - Show results or mastery: follow **Report progress**.
 - Combine requests only when the user clearly asks for both; finish grading before generating later adaptive questions.
@@ -24,7 +24,7 @@ Perform these steps in order:
 
 1. Obtain the actual local date as `YYYY-MM-DD`; do not infer it from an old session filename.
 2. Read every file under `progress/`.
-3. Read the latest three session files, including every session in those files. Read more only when notes or related weaknesses require it.
+3. Read the latest three session files across `sessions/理解・応用問題/` and `sessions/暗記語句問題/`, including every session in those files. Also accept legacy files under `sessions/standard/`, `sessions/term-recall/`, or directly under `sessions/`. Read more only when notes or related weaknesses require it.
 4. Inspect domain scores, term scores, last-study dates, attempts, averages, recent difficulty, next-review dates, and recent domain mix.
 5. Estimate forgetting and priority using `../../references/scoring-rules.md`.
 6. Run the deterministic planner unless it is unavailable:
@@ -34,9 +34,9 @@ Perform these steps in order:
      --root . --date YYYY-MM-DD
    ```
 
-   Add `--count N`, `--focus 'Webセキュリティ'`, or `--mode weak|new|subject-b|light` to reflect the request. Use the planner as a candidate plan, not as permission to ignore prerequisites or recent question wording.
-7. Select questions with approximately 40% weak, 25% due, 20% new, and 15% strong/challenge slots. Keep Subject B material around 70–85%. Honor explicit count, focus, or style over default ratios.
-8. Write the questions to `sessions/YYYY-MM-DD.md` using the next Session number. Create the file heading if absent; otherwise append without changing earlier sessions.
+   Add `--count N`, `--focus 'Webセキュリティ'`, or `--mode weak|new|subject-b|light|term-recall` to reflect the request. Explicit counts must be between 1 and 30 for every mode; do not clamp an out-of-range request. Use `--mode term-recall` for a term-recall request. Use the planner as a candidate plan, not as permission to ignore prerequisites or recent question wording.
+7. For normal sessions, select questions with approximately 40% weak, 25% due, 20% new, and 15% strong/challenge slots. Keep Subject B material around 70–85%. For term-recall sessions, follow **Generate a term-recall session** below. Honor explicit count, focus, or style over default ratios.
+8. Write normal questions to `sessions/理解・応用問題/YYYY-MM-DD.md` and term-recall questions to `sessions/暗記語句問題/YYYY-MM-DD.md`. Determine the next Session number from every file for that date across both current directories and all legacy Session paths. Create the target file heading if absent; otherwise append without changing earlier sessions. Every Session must contain exactly one integer `Question Count` from 1 to 30. Keep internal metadata and CLI identifiers in English (`Mode: adaptive`, `Mode: term-recall`, `--mode standard`, and `--mode term-recall`).
 
 Use eight cross-domain Level 2–3 questions for an unassessed first session unless the user specifies a count or asks for light practice. For the default eight, use exactly one question from each of Web, network, cryptography, authentication, PKI, DNS, email, and malware; do not substitute another domain. Use five questions normally and three for light practice.
 
@@ -51,30 +51,51 @@ For each question:
 - Avoid repeating materially identical wording from recent sessions.
 - Do not include answers or leading hints in the question file.
 
-After writing, verify the file, question count, unique numbering, metadata, one `### 問題` heading per question, visible question text, and answer placeholders. In chat, respond briefly with the absolute clickable session path, question count, and any requested emphasis. Do not duplicate all question text in chat.
+After writing, verify the file, confirm that `Question Count` equals the actual number of questions, and confirm that question headings are unique and consecutive from `Q1`. Reject any heading beginning with `### Q` that does not exactly match this numbered form. Also verify metadata, one `### 問題` heading per question, visible question text, and answer placeholders. In chat, respond briefly with the absolute clickable session path, question count, and any requested emphasis. Do not duplicate all question text in chat.
+
+### Generate a term-recall session
+
+Use this mode only when the request asks for term/word memorization or recall. If no count is given, create exactly 10 questions; otherwise honor the explicit count from 1 to 30. Run:
+
+```bash
+python3 skills/security-specialist-trainer/scripts/study_helper.py plan \
+  --root . --date YYYY-MM-DD --mode term-recall --count N
+```
+
+The planner treats the existing overall score, mode-specific scores, attempts, last-study date, last score, next review, forgetting, recent appearances, weak related terms, and unassessed terms as one adaptive history. Normal sessions use Explanation Score for their own weakness and difficulty; term-recall sessions use Recall Score for their own weakness and retention judgment. A mode with no evidence is unseen in that mode, while the other mode still contributes cross-mode priority. Do not replace the result with random selection. Use exact taxonomy terms, assign exactly one Primary Term to each question, and do not assign the same Primary Term twice in one Session.
+
+Set `Mode: term-recall`, `Level: 1`, and `Track A/B Target: 40% / 60%`. Use `A = floor(count * 0.40)` and assign every remainder to B, so 5 questions are A2/B3 and 10 are A4/B6. For this mode, taxonomy Track `B` stays Session Track `B`; taxonomy Track `A` or `A/B` uses Session Track `A`. The progress catalog Track remains unchanged.
+
+Use the short question emitted in the plan, normally「`用語`とは何ですか？意味・目的・重要な特徴を、自分の言葉で簡潔に説明してください。」 Do not turn either Track into a scenario, comparison, countermeasure, residual-risk, or long-form question. One concise explanation is enough. The normal-session rule against pure definition recall does not apply here.
 
 ## Grade a session
 
 Perform these steps in order:
 
-1. Resume the newest `grading` Session first. Otherwise find the newest `awaiting_answers` or `ready_for_grading` Session, unless the user names a date or Session number. Never select `graded` or `cancelled`.
+1. Search every Session location below before selecting a grading target:
+   - Current normal sessions: `sessions/理解・応用問題/`
+   - Current term-recall sessions: `sessions/暗記語句問題/`
+   - Legacy normal sessions: `sessions/standard/`
+   - Legacy term-recall sessions: `sessions/term-recall/`
+   - Legacy root-level sessions: `sessions/YYYY-MM-DD.md`
+   Resume the newest `grading` Session first. Otherwise find the newest `awaiting_answers` or `ready_for_grading` Session, unless the user names a date or Session number. Never select `graded` or `cancelled`.
 2. Read every question, its metadata, and the user's full answer. Ignore HTML placeholder comments.
 3. If any answer is blank, do not fabricate or partially finalize scores. Identify the unanswered question numbers and leave progress unchanged.
-4. Score each answer from 0 to 100 for conceptual meaning. Select only applicable rubric dimensions: definition, principle, conditions, scenario/application, countermeasures with reasons, comparison/limits. Normalize applicable weights to 100.
+4. Score each answer from 0 to 100 for conceptual meaning. In a normal session, select only applicable rubric dimensions: definition, principle, conditions, scenario/application, countermeasures with reasons, comparison/limits, and normalize applicable weights to 100. In `term-recall`, evaluate what the term is, its purpose or role, and its essential characteristics or mechanism. Do not deduct for omitted scenarios, advanced countermeasures, residual risk, or long comparisons that the short question did not ask for.
 5. Change the Session Status to `grading`. Upsert concise feedback under each answer: score, good points, missing or mistaken points, a short model explanation, and one next-review focus. On recovery, replace an existing grading block instead of appending a duplicate.
 6. For each graded answer, decide whether a Mermaid diagram would make a difficult flow materially easier to review. Create one only for concepts involving multiple actors, ordered processing steps, branching conditions, trust/key/data movement, or incident/control sequences; do not create diagrams for isolated definitions or relationships that a short sentence makes clear.
    - Before creating anything, inspect every Markdown file under `復習用/`. If an existing diagram already covers the same learning goal and flow (including a more detailed version), reuse it and do not create a duplicate.
    - For a genuinely new diagram, create `復習用/<topic>.md` with a descriptive, stable topic name and a fenced `mermaid` diagram. Use the diagram type that best fits the flow (`flowchart`, `sequenceDiagram`, or `stateDiagram-v2`), label actors, inputs, conditions, and outcomes clearly, and keep it compact enough for review.
    - When a flow involves actors, make the subject, recipient, and object explicit. Prefer `sequenceDiagram` for exchanges between actors; otherwise write edge labels as “who does what to whom/what,” such as “ブラウザがWebサーバへサーバ証明書を要求する.” Do not use ambiguous labels such as “送付” or “接続” by themselves. Use short labels and avoid HTML line-break tags when a renderer may not support them.
    - Treat these diagrams as durable review notes: make them technically correct and standalone, and do not alter an existing diagram merely to cover an unrelated question.
-7. Run the idempotent recorder only after every question has one valid score:
+7. Run the idempotent recorder only after every question has one valid score. In the current Japanese Session directories, the recorder requires exactly one supported `Mode` (`diagnosis`, `adaptive`, or `term-recall`) and requires the directory to match that Mode: `sessions/理解・応用問題/` accepts normal modes and `sessions/暗記語句問題/` accepts only `term-recall`. Only legacy root-level and English-directory Sessions may omit Mode or ignore directory-to-Mode correspondence. For every mode, the recorder rejects a Session unless it has exactly one integer `Question Count` from 1 to 30, the declared count equals the actual question count, and question headings are unique and consecutive from `Q1`. It also rejects any heading beginning with `### Q` that is not an exact positive-integer question heading. For `term-recall`, it additionally requires exactly one Primary Term per question and rejects any non-Level-1 question, any Track value other than the literal `A` or `B` (including the literal `A/B`), or Track allocation that differs from `A = floor(count * 0.40)` and `B = remainder`. All validation happens before changing progress:
 
    ```bash
    python3 skills/security-specialist-trainer/scripts/study_helper.py record \
-     --root . --date YYYY-MM-DD --session N
+     --root . --date YYYY-MM-DD --session N --mode standard|term-recall
    ```
 
-8. Let the recorder update `terms.md`, recompute `domains.md`, upsert `history.md`, append or replace the Session Summary, and change Status to `graded` last. It uses `Applied Sessions` to avoid double-counting after interruption. Record overlapping Primary Terms in chronological Session order.
+8. Let the recorder update `terms.md`, recompute `domains.md`, upsert `history.md`, append or replace the Session Summary, and change Status to `graded` last. It uses `Applied Sessions` to avoid double-counting after interruption. It updates overall Score for every mode and the matching Recall or Explanation score separately. Domain recency uses level-capped evidence, while Session averages and Recall Score retain the raw 0–100 score. Next Review remains shared across modes. Record overlapping Primary Terms in chronological Session order.
 9. If the recorder fails, leave Status as `grading`, report the error, and retry after correcting it. Never claim progress was updated and never set `graded` manually before all three progress files succeed.
 
 Use `../../references/scoring-rules.md` as the arithmetic authority. Update only Primary Terms numerically; Related Terms remain context until directly assessed. Keep all three progress files mutually consistent: the same date, domain name, question count, average, and next-review conclusions must agree. If the recorder is unavailable, reproduce its ordering and idempotency rules manually and mark `graded` only as the final write.
@@ -90,6 +111,8 @@ Read all files under `progress/` and enough recent sessions to explain the curre
 3. Especially weak terms.
 4. Especially strong terms, including the highest level actually demonstrated.
 5. Terms due now or soon and the reason.
+
+When both mode scores exist, call out meaningful gaps such as strong term recall with weak explanation/application, or the reverse. Do not treat a missing mode-specific score in old data as zero.
 
 Never calculate an overall score by treating `Unassessed` domains as zero. Distinguish current mastery from lifetime average. For “today's result,” summarize today's latest graded session and mention whether progress files were updated.
 
