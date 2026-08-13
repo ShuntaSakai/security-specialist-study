@@ -96,7 +96,13 @@ Perform these steps in order:
    ```
 
 8. Let the recorder update `terms.md`, recompute `domains.md`, upsert `history.md`, append or replace the Session Summary, and change Status to `graded` last. It uses `Applied Sessions` to avoid double-counting after interruption. It updates overall Score for every mode and the matching Recall or Explanation score separately. Domain recency uses level-capped evidence, while Session averages and Recall Score retain the raw 0–100 score. Next Review remains shared across modes. Record overlapping Primary Terms in chronological Session order.
-9. If the recorder fails, leave that Session's Status as `grading`, report the error, and stop before processing a later candidate. Never claim progress was updated and never set `graded` manually before all three progress files succeed.
+9. If the recorder reports that a completed Session is older than already-recorded evidence, leave that Session's Status as `grading` and rebuild all fully scored Sessions in chronological order before retrying later work:
+
+   ```bash
+   python3 skills/security-specialist-trainer/scripts/study_helper.py rebuild --root .
+   ```
+
+   This recovery replaces only derived progress files from the scored Session history and preserves the original Session Markdown. For other recorder failures, leave that Session's Status as `grading`, report the error, and stop before processing a later candidate. Never claim progress was updated and never set `graded` manually before all three progress files succeed.
 
 Use `../../references/scoring-rules.md` as the arithmetic authority. Update only Primary Terms numerically; Related Terms remain context until directly assessed. Keep all three progress files mutually consistent: the same date, domain name, question count, average, and next-review conclusions must agree. If the recorder is unavailable, reproduce its ordering and idempotency rules manually and mark `graded` only as the final write.
 

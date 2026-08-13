@@ -1039,6 +1039,55 @@ def record_progress(
     return {**summary, "questions": len(questions), "session_path": session_path}
 
 
+def rebuild_progress(root: Path) -> dict[str, int]:
+    """Rebuild progress from every fully scored Session in chronological order."""
+    sessions: list[tuple[date, int, Path, str, list[GradedQuestion]]] = []
+    for path in session_file_paths(root):
+        study_date = as_date(path.stem)
+        if study_date is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"^## Session ([1-9][0-9]*)[ \t]*$", text, flags=re.MULTILINE):
+            session_number = int(match.group(1))
+            start, end = session_bounds(text, session_number)
+            section = text[start:end]
+            status_match = re.search(
+                r"^- Status:[ \t]*(\S+)[ \t]*$", section, flags=re.MULTILINE
+            )
+            status = status_match.group(1) if status_match else ""
+            if status not in {"grading", "graded"}:
+                continue
+            mode = session_mode_for_path(root, path, text, session_number)
+            _, questions = parse_graded_session(
+                text,
+                session_number,
+                allow_missing_mode=is_legacy_session_path(root, path),
+            )
+            sessions.append((study_date, session_number, path, mode, questions))
+
+    sessions.sort(key=lambda item: (item[0], item[1], item[2].as_posix()))
+    keys = [(study_date, session_number) for study_date, session_number, _, _, _ in sessions]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Cannot rebuild progress: duplicate Date/Session combinations exist")
+
+    # Validate all inputs before replacing any progress file.
+    catalog = load_catalog(root)
+    if not catalog:
+        raise ValueError("Cannot rebuild progress without a concept catalog")
+    domain_rows = read_table(root / "progress" / "domains.md", "Domain")
+
+    atomic_write(root / "progress" / "terms.md", render_terms({}))
+    atomic_write(root / "progress" / "domains.md", render_domains(domain_rows, {}, [], date.today()))
+    atomic_write(root / "progress" / "history.md", render_history([]))
+
+    for study_date, session_number, path, _, questions in sessions:
+        records = update_term_records(root, study_date, session_number, questions, catalog)
+        update_domains(root, records, study_date)
+        summary = update_history(root, study_date, session_number, questions, records, path)
+        finalize_session(path, session_number, summary)
+    return {"sessions": len(sessions), "questions": sum(len(item[4]) for item in sessions)}
+
+
 def tie_break(term: str, today: date) -> float:
     digest = hashlib.sha256(f"{today.isoformat()}|{term}".encode()).hexdigest()
     return int(digest[:6], 16) / 0xFFFFFF
@@ -1479,6 +1528,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         choices=[STANDARD_SESSION_MODE, TERM_RECALL_MODE],
         help="Verify the mode-specific Session directory.",
     )
+    rebuild_parser = subparsers.add_parser(
+        "rebuild",
+        help="Rebuild Markdown progress from all fully scored Sessions in chronological order.",
+    )
+    rebuild_parser.add_argument("--root", type=Path, default=default_root())
     return parser.parse_args(argv)
 
 
@@ -1501,6 +1555,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"Recorded {result['questions']} questions for {args.date.isoformat()} "
             f"Session {args.session}; average={result['average']}; next_review={result['next_review']}"
         )
+        return 0
+
+    if args.command == "rebuild":
+        try:
+            result = rebuild_progress(root)
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        print(f"Rebuilt {result['sessions']} sessions and {result['questions']} questions")
         return 0
 
     catalog = load_catalog(root)

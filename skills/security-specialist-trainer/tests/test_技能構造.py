@@ -161,6 +161,19 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("空欄を含むSessionは飛ばされ", usage_text)
         self.assertIn("新しい未回答Sessionが古い回答済みSessionの採点を妨げません", logic_text)
 
+    def test_時系列が逆転した進捗を再構築できる(self) -> None:
+        script_text = (self.skill / "scripts" / "study_helper.py").read_text(
+            encoding="utf-8"
+        )
+        skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
+        session_text = (self.root / "references" / "session-format.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("def rebuild_progress", script_text)
+        self.assertIn('subparsers.add_parser(\n        "rebuild"', script_text)
+        self.assertIn("study_helper.py rebuild --root .", skill_text)
+        self.assertIn("study_helper.py rebuild --root .", session_text)
+
     def test_自動テストが全てのプッシュで実行される(self) -> None:
         workflow = (
             self.root / ".github" / "workflows" / "python-tests.yml"

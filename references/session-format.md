@@ -147,3 +147,11 @@ python3 skills/security-specialist-trainer/scripts/study_helper.py record \
 対象は日付昇順、同日の場合はSession番号昇順で処理する。これにより、同じPrimary Termを含むSessionでも進捗が時系列どおりに反映される。一つ以上の回答が空欄のSessionは対象外として未回答番号を報告するが、別の全回答済みSessionの採点は妨げない。ユーザーが日付またはSession番号を指定した場合だけ、そのSessionへ対象を絞る。明示的に`cancelled`にしたSessionは対象外とする。
 
 進捗更新まで完了したかは、各問の有効な採点ブロックと、Session Summaryの`Progress updated`で判定する。採点ブロックが途中まで存在する場合や、全問採点済みでもSession Summaryがない場合は、同じ時系列順で復旧処理する。
+
+後の日付のSessionが先に記録済みで、古い全回答済みSessionを後から採点した場合、`record`は時系列保護のため停止する。このときは、全採点済みSessionから導出ファイルを時系列で再構築する。
+
+```bash
+python3 skills/security-specialist-trainer/scripts/study_helper.py rebuild --root .
+```
+
+`rebuild`は`terms.md`、`domains.md`、`history.md`を採点済みSessionから再生成し、Session本体の問題・回答・採点内容は変更しない。
