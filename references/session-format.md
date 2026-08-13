@@ -136,10 +136,14 @@ python3 skills/security-specialist-trainer/scripts/study_helper.py record \
 
 ## 状態判定
 
-- `awaiting_answers`: 一つ以上の回答が未記入。記入済みだけを勝手に部分採点しない。理解・応用問題と暗記語句問題のどちらでも、`わかりません` のような明示的な解答不能の記入は未回答ではなく、`0 / 100` で採点する。
-- `ready_for_grading`: 任意。ユーザーまたはSkillが全回答記入を確認した状態。
+- `awaiting_answers`: 新規作成時の初期値。後から全回答を記入してもこのまま残り得るため、採点可否の判定には使わない。理解・応用問題と暗記語句問題のどちらでも、`わかりません` のような明示的な解答不能の記入は未回答ではなく、`0 / 100` で採点する。
+- `ready_for_grading`: 任意の目印。採点可否はこの値の有無ではなく、全回答が記入済みかで判断する。
 - `grading`: 問題別採点は存在するが、progress更新が途中または未確認。`record` を再実行して復旧できる。
 - `graded`: 問題別採点とprogress更新が完了。
 - `cancelled`: ユーザーが明示的に中止した場合だけ使う。
 
-「採点して」では日付指定がなければ、まず `grading` のSessionを復旧対象にし、その後で日付降順・Session番号降順の `awaiting_answers` または `ready_for_grading` を使う。`graded` と `cancelled` は対象外。複数ある場合は対象ファイルとSession番号をチャットで明示する。
+「採点して」では、現在・旧形式を含む全Sessionを走査し、**全回答が記入済みで、かつ採点とprogress更新が完了していないSessionをすべて**対象にする。回答欄の標準プレースホルダは空欄として扱い、`わかりません` は回答済みとして扱う。`Status`の値で対象を選ばないため、全回答を記入したまま`awaiting_answers`が残っていても対象になる。
+
+対象は日付昇順、同日の場合はSession番号昇順で処理する。これにより、同じPrimary Termを含むSessionでも進捗が時系列どおりに反映される。一つ以上の回答が空欄のSessionは対象外として未回答番号を報告するが、別の全回答済みSessionの採点は妨げない。ユーザーが日付またはSession番号を指定した場合だけ、そのSessionへ対象を絞る。明示的に`cancelled`にしたSessionは対象外とする。
+
+進捗更新まで完了したかは、各問の有効な採点ブロックと、Session Summaryの`Progress updated`で判定する。採点ブロックが途中まで存在する場合や、全問採点済みでもSession Summaryがない場合は、同じ時系列順で復旧処理する。

@@ -143,6 +143,24 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("exactly one integer `Question Count` from 1 to 30", grade_section)
         self.assertIn("unique and consecutive from `Q1`", grade_section)
 
+    def test_採点対象は回答内容で選び全件を時系列で処理する(self) -> None:
+        skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
+        session_text = (self.root / "references" / "session-format.md").read_text(
+            encoding="utf-8"
+        )
+        usage_text = (self.root / "docs" / "使い方.md").read_text(encoding="utf-8")
+        logic_text = (self.root / "docs" / "出題・採点ロジック.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("Do **not** select by `Status`", skill_text)
+        self.assertIn("select **all** grading candidates", skill_text)
+        self.assertIn("chronological order", skill_text)
+        self.assertIn("全回答が記入済みで、かつ採点とprogress更新が完了していないSessionをすべて", session_text)
+        self.assertIn("Status`の値で対象を選ばない", session_text)
+        self.assertIn("空欄を含むSessionは飛ばされ", usage_text)
+        self.assertIn("新しい未回答Sessionが古い回答済みSessionの採点を妨げません", logic_text)
+
     def test_自動テストが全てのプッシュで実行される(self) -> None:
         workflow = (
             self.root / ".github" / "workflows" / "python-tests.yml"
