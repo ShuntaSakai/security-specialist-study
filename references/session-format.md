@@ -136,7 +136,7 @@ python3 skills/security-specialist-trainer/scripts/study_helper.py record \
 
 ## 状態判定
 
-- `awaiting_answers`: 一つ以上の回答が未記入。記入済みだけを勝手に部分採点しない。
+- `awaiting_answers`: 一つ以上の回答が未記入。記入済みだけを勝手に部分採点しない。理解・応用問題と暗記語句問題のどちらでも、`わかりません` のような明示的な解答不能の記入は未回答ではなく、`0 / 100` で採点する。
 - `ready_for_grading`: 任意。ユーザーまたはSkillが全回答記入を確認した状態。
 - `grading`: 問題別採点は存在するが、progress更新が途中または未確認。`record` を再実行して復旧できる。
 - `graded`: 問題別採点とprogress更新が完了。

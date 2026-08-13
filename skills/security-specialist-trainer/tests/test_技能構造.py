@@ -99,6 +99,24 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("--mode term-recall", session_text)
         self.assertIn("1〜30問", session_text)
 
+    def test_わかりませんは回答済みとして採点するルールが文書化される(self) -> None:
+        skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
+        session_text = (self.root / "references" / "session-format.md").read_text(
+            encoding="utf-8"
+        )
+        scoring_text = (self.root / "references" / "scoring-rules.md").read_text(
+            encoding="utf-8"
+        )
+        usage_text = (self.root / "docs" / "使い方.md").read_text(encoding="utf-8")
+        for text in (skill_text, session_text, scoring_text, usage_text):
+            with self.subTest(text=text[:30]):
+                self.assertIn("わかりません", text)
+                self.assertIn("0 / 100", text)
+        self.assertIn("normal (understanding/application)", skill_text)
+        self.assertIn("理解・応用問題", session_text)
+        self.assertIn("理解・応用問題", scoring_text)
+        self.assertIn("理解・応用問題", usage_text)
+
     def test_採点手順は現在と旧セッション保存先を全て明記する(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
         grade_section_match = re.search(
