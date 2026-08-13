@@ -35,6 +35,7 @@ DIAGNOSTIC_DOMAIN_ORDER = [
 TERM_RECALL_MODE = "term-recall"
 EXPLANATION_MODE = "explanation"
 STANDARD_SESSION_MODE = "standard"
+DEFAULT_NORMAL_QUESTION_COUNT = 6
 NORMAL_SESSION_MODES = frozenset({"diagnosis", "adaptive"})
 STANDARD_SESSION_DIRECTORY = "理解・応用問題"
 TERM_RECALL_SESSION_DIRECTORY = "暗記語句問題"
@@ -1310,6 +1311,10 @@ def adaptive_plan(
         weak_count, due_count, new_count = round(count * 0.60), round(count * 0.20), round(count * 0.10)
     elif mode == "new":
         weak_count, due_count, new_count = round(count * 0.25), round(count * 0.15), round(count * 0.50)
+    elif mode == STANDARD_SESSION_MODE and count >= DEFAULT_NORMAL_QUESTION_COUNT:
+        # The six-question default adds one new concept to the former five-question
+        # mix. Every explicitly requested question beyond six expands coverage too.
+        weak_count, due_count, new_count = 2, 1, count - 4
     else:
         weak_count, due_count, new_count = round(count * 0.40), round(count * 0.25), round(count * 0.20)
     challenge_count = max(0, count - weak_count - due_count - new_count)
@@ -1601,7 +1606,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         plan = diagnostic_plan(catalog, count, args.focus)
         phase = "diagnosis"
     else:
-        count = requested_count if requested_count is not None else (3 if mode == "light" else 5)
+        count = requested_count if requested_count is not None else (
+            3 if mode == "light" else DEFAULT_NORMAL_QUESTION_COUNT
+        )
         candidates = build_candidates(
             catalog,
             terms,

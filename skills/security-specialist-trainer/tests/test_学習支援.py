@@ -747,7 +747,7 @@ Score: 100 / 100
             self.assertEqual("100", history_row["Average"])
             self.assertEqual(100, record.recall_score)
 
-    def test_五問計画は全ての適応枠を含む(self) -> None:
+    def test_通常六問計画は新規を二問含む(self) -> None:
         today = date(2026, 8, 9)
         wanted = {
             "SQLインジェクション": (35, date(2026, 8, 7), date(2026, 8, 8)),
@@ -763,13 +763,29 @@ Score: 100 / 100
                     item.term, item.domain, score, studied, 3, score, 4, review, item.related, ""
                 )
         candidates = study_helper.build_candidates(self.catalog, records, today, {})
-        plan = study_helper.adaptive_plan(candidates, 5)
+        plan = study_helper.adaptive_plan(candidates, 6)
         buckets = [bucket for bucket, _ in plan]
-        self.assertEqual(5, len(plan))
+        self.assertEqual(6, len(plan))
         self.assertIn("弱点", buckets)
         self.assertIn("復習期", buckets)
-        self.assertIn("新規", buckets)
+        self.assertEqual(2, buckets.count("新規"))
         self.assertIn("発展", buckets)
+
+    def test_通常問題の六問超過分は全て新規になる(self) -> None:
+        candidates = study_helper.build_candidates(self.catalog, {}, date(2026, 8, 9), {})
+        plan = study_helper.adaptive_plan(candidates, 9)
+        buckets = [bucket for bucket, _ in plan]
+        self.assertEqual(9, len(plan))
+        self.assertEqual(5, buckets.count("新規"))
+
+    def test_通常問題の既定数は六問である(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exit_code = study_helper.main(
+                ["plan", "--root", str(self.root), "--date", "2026-08-13"]
+            )
+        self.assertEqual(0, exit_code)
+        self.assertIn("- Questions: 6", output.getvalue())
 
     def test_直近高得点は復習期でなく将来の発展候補になる(self) -> None:
         item = next(item for item in self.catalog if item.term == "DMARC")
