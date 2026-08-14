@@ -99,6 +99,20 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("--mode term-recall", session_text)
         self.assertIn("1〜30問", session_text)
 
+    def test_暗記語句を一周した後にカタログを拡張する(self) -> None:
+        skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
+        logic_text = (self.root / "docs" / "出題・採点ロジック.md").read_text(
+            encoding="utf-8"
+        )
+        taxonomy_text = (self.root / "references" / "taxonomy.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("every initial catalog term has `Recall Attempts >= 1`", skill_text)
+        self.assertIn("80〜120 previously absent high-priority terms", skill_text)
+        self.assertIn("thereafter append 20〜40 terms", skill_text)
+        self.assertIn("初回の151語すべてに`Recall Attempts`が1回以上", logic_text)
+        self.assertIn("全151語に暗記語句問題として1回以上回答した後", taxonomy_text)
+
     def test_わかりませんは回答済みとして採点するルールが文書化される(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
         session_text = (self.root / "references" / "session-format.md").read_text(
