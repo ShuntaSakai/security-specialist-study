@@ -176,6 +176,19 @@ class 学習支援テスト(unittest.TestCase):
                 self.assertEqual(expected_b, tracks.count("B"))
                 self.assertTrue(all(candidate.suggested_level == 1 for _, candidate in plan))
 
+    def test_重要度の高い未学習語句を明確に優先する(self) -> None:
+        high = study_helper.CatalogItem(
+            "重要語句", "Webセキュリティ", "A/B", 5, 1, False, "", ""
+        )
+        normal = study_helper.CatalogItem(
+            "通常語句", "Webセキュリティ", "A/B", 3, 1, False, "", ""
+        )
+        candidates = study_helper.build_candidates(
+            [high, normal], {}, date(2026, 8, 15), {}, mode=study_helper.TERM_RECALL_MODE
+        )
+        priority = {candidate.item.term: candidate.priority for candidate in candidates}
+        self.assertGreater(priority["重要語句"] - priority["通常語句"], 7)
+
     def test_暗記語句問題は短い定義説明形式になる(self) -> None:
         question = study_helper.term_recall_question("CSRF")
         self.assertEqual(

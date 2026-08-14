@@ -129,7 +129,7 @@ forgetting = min(40, 35 * elapsed / 基本間隔)
 一度に生成する問題数は1〜30問とする。範囲外は候補配分へ丸めず、入力エラーとして扱う。
 
 ```text
-priority = weakness + forgetting + subject_b + unseen + relation + balance - recent_penalty
+priority = weakness + forgetting + subject_b + unseen + relation + balance + importance - recent_penalty
 
 mode_score    = 通常説明ではExplanation Score、暗記語句ではRecall Score
 weakness      = 0.45 * (100 - mode_score)            # 自己モード未評価は別扱い
@@ -138,8 +138,11 @@ subject_b     = 科目B中心15、A/B 10、科目A 3
 unseen        = 未学習20
 relation      = 弱い概念と強く関連するなら0〜10
 balance       = 最近少ない分野へ0〜10
+importance    = taxonomyのImportance × 4
 recent_penalty= 当日学習済みかつLast Scoreが60点以上なら30
 ```
+
+`Importance` は、頻出性、科目Bで説明できる必要性、他概念の前提度を合わせたカタログ上の基礎優先度である。重要度5は、同じく未学習・同程度の候補より明確に先に出す。一方で、低得点の弱点や期限超過の復習はこの加点を上回れるため、重要語だけを繰り返して他の弱点を取りこぼさない。
 
 直近5SessionのPrimary Termsも数え、同じ語句の最近の出題には0〜24の抑制を掛ける。当日出題は重く数えるが、低得点・期限超過・強い関連弱点がある語句を永久に除外はしない。
 

@@ -1221,7 +1221,13 @@ def build_candidates(
             priority += 0.25 * (100 - record.recall_score)
             reason += f"。暗記理解度{record.recall_score}を通常説明で補強"
 
-        priority += item.importance * 1.5 + tie_break(item.term, today)
+        # Importance is the catalog's base exam priority.  Make it strong
+        # enough to order otherwise comparable new terms, while allowing a
+        # genuine weak point or overdue review to take precedence.
+        priority += item.importance * 4 + tie_break(item.term, today)
+        # Keep priority comparisons deterministic across harmless floating-point
+        # representation differences caused by the component additions above.
+        priority = round(priority, 8)
         candidates.append(
             Candidate(
                 item=item,
