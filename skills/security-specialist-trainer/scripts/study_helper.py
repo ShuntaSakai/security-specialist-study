@@ -1009,7 +1009,7 @@ def finalize_session(
         flags=re.MULTILINE | re.DOTALL,
     )
     if summary_pattern.search(session):
-        session = summary_pattern.sub(summary_text.rstrip(), session)
+        session = summary_pattern.sub(summary_text, session)
     else:
         session = session.rstrip() + "\n\n" + summary_text.rstrip() + "\n"
     atomic_write(path, text[:start] + session + text[end:])

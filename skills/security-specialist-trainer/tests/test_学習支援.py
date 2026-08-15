@@ -65,6 +65,29 @@ class 学習支援テスト(unittest.TestCase):
         self.assertEqual(8, len({candidate.item.domain for _, candidate in plan}))
         self.assertTrue(all(2 <= candidate.suggested_level <= 3 for _, candidate in plan))
 
+    def test_セッション要約の更新後も末尾改行を保持する(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session_path = Path(temp_dir) / "session.md"
+            session_path.write_text(
+                "## Session 1\n\n- Status: graded\n\n"
+                "## Session 1 Summary\n\n"
+                "- Average: 80 / 100\n"
+                "- Progress updated: terms.md / domains.md / history.md",
+                encoding="utf-8",
+            )
+            summary = {
+                "average": 80,
+                "strong": [],
+                "weak": [],
+                "next_review": "2026-08-16",
+            }
+
+            study_helper.finalize_session(session_path, 1, summary)
+            self.assertTrue(session_path.read_bytes().endswith(b"\n"))
+
+            study_helper.finalize_session(session_path, 1, summary)
+            self.assertTrue(session_path.read_bytes().endswith(b"\n"))
+
     def test_初回の分野指定が診断構成を変える(self) -> None:
         plan = study_helper.diagnostic_plan(self.catalog, 8, "Webセキュリティ")
         web_count = sum(candidate.item.domain == "Webセキュリティ" for _, candidate in plan)
