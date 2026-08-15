@@ -1447,7 +1447,7 @@ def suggested_form(level: int) -> str:
 
 
 def term_recall_question(term: str) -> str:
-    return f"{term}とは何ですか？意味・目的・重要な特徴を簡潔に説明してください。"
+    return f"{term}とは何ですか？"
 
 
 def infer_generation_request(request: str) -> tuple[str, Optional[int]]:

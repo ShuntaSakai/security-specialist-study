@@ -70,14 +70,14 @@
 
 ### 問題
 
-CSRFとは何ですか？意味・目的・重要な特徴を簡潔に説明してください。
+CSRFとは何ですか？
 
 ### 回答
 
 <!-- この行の下に回答を書いてください -->
 ```
 
-`Mode: term-recall` が暗記語句問題の判別子である。既存の `diagnosis`、`adaptive` などは通常説明問題として扱い、Mode自体がない旧Sessionも通常説明問題として読み込む。暗記語句問題はすべてLevel 1の短い語句説明形式とし、Trackによって長文化しない。各1問の `Primary Terms` は正確に1項目とし、1つのScoreで複数語句のRecall Scoreを更新しない。taxonomy上の複合名称は、1つのリスト項目として扱う。
+`Mode: term-recall` が暗記語句問題の判別子である。既存の `diagnosis`、`adaptive` などは通常説明問題として扱い、Mode自体がない旧Sessionも通常説明問題として読み込む。暗記語句問題はすべてLevel 1の短い語句説明形式とし、Trackによって長文化しない。正答の目安は「クラウドの提供側と利用者側で責任を分担すること。」のように、語句の核を一文で言えることとする。目的・特徴・仕組みの詳説は要求しない。各1問の `Primary Terms` は正確に1項目とし、1つのScoreで複数語句のRecall Scoreを更新しない。taxonomy上の複合名称は、1つのリスト項目として扱う。
 
 現行の日本語名ディレクトリに保存するSessionは `Mode` を1行だけ必須とし、`diagnosis`、`adaptive`、`term-recall` 以外の値や重複を許可しない。`sessions/理解・応用問題/` は `diagnosis` または `adaptive`、`sessions/暗記語句問題/` は `term-recall` だけを許可し、ディレクトリとModeの不一致は拒否する。Modeなしを通常問題として扱うことや、配置によるMode制約を加えない後方互換は、旧直下と旧英語ディレクトリのSessionにだけ適用する。
 
