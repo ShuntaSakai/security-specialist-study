@@ -10,7 +10,7 @@
 - 新しい概念は、前提が未評価・低理解なら前提と組み合わせるか、難易度を下げる。
 - 暗記語句SessionのA/B 4:6配分では、カタログの `B` をSession Track `B`、`A` と `A/B` をSession Track `A` として扱う。カタログ自体のTrackと語句表記は変更しない。
 
-このカタログは、IPAの[情報処理安全確保支援士試験情報](https://www.ipa.go.jp/shiken/kubun/sc.html)、[シラバス Ver.2.1](https://www.ipa.go.jp/shiken/syllabus/nq6ept00000014ir-att/syllabus_sc_ver2_1.pdf)、[令和6年度](https://www.ipa.go.jp/shiken/mondai-kaiotu/2024r06.html)・[令和7年度](https://www.ipa.go.jp/shiken/mondai-kaiotu/2025r07.html)の公開過去問を基準に、2026-08-15時点で151語へ拡張した。全151語に暗記語句問題として1回以上回答した後は、次の暗記語句Sessionの作成前に最新の公式資料を確認し、未登録の重要語を80〜120語追加して約250語に広げる。約250語を1周した後は、過去問で具体的に不足が判明した場合だけ20〜40語ずつ追加する。これは余裕をもって合格圏の基礎語彙をカバーするための出発点であり、午後問題の読解・記述演習そのものを置き換えるものではない。
+このカタログは、IPAの[情報処理安全確保支援士試験情報](https://www.ipa.go.jp/shiken/kubun/sc.html)、[シラバス Ver.2.1](https://www.ipa.go.jp/shiken/syllabus/nq6ept00000014ir-att/syllabus_sc_ver2_1.pdf)、[令和6年度](https://www.ipa.go.jp/shiken/mondai-kaiotu/2024r06.html)・[令和7年度](https://www.ipa.go.jp/shiken/mondai-kaiotu/2025r07.html)の公開過去問を基準に、2026-08-15時点で151語へ拡張した。過去問PDFの分析結果は[過去問分析索引](past-question-index.md)へ分離して保持する。日々の出題はこのカタログと`progress/`だけを用い、PDFを読むのは全151語又は約250語の暗記一周時、又は利用者が明示したときだけとする。全151語に暗記語句問題として1回以上回答した後は、次の暗記語句Sessionの作成前に索引と最新の公式資料を確認し、未登録の重要語を80〜120語追加して約250語に広げる。約250語を1周した後は、過去問で具体的に不足が判明した場合だけ20〜40語ずつ追加する。これは余裕をもって合格圏の基礎語彙をカバーするための出発点であり、午後問題の読解・記述演習そのものを置き換えるものではない。
 
 ## 分野構造
 
@@ -46,7 +46,7 @@
 | CSRF | Webセキュリティ | B | 5 | 3 | no | Cookie / セッション管理 | CSRFトークン / SameSite / XSS |
 | SSRF | Webセキュリティ | B | 4 | 3 | no | HTTP / 名前解決 | メタデータサービス / URL検証 / ネットワーク分離 |
 | ディレクトリトラバーサル | Webセキュリティ | B | 4 | 2 | no | ファイルパス | 正規化 / allowlist / 権限分離 |
-| セッション管理 | 認証・認可 / IAM | B | 5 | 2 | yes | HTTP / Cookie | セッション固定 / Cookie属性 / 再認証 |
+| セッション管理 | 認証・認可 / IAM | B | 5 | 2 | yes | HTTP / Cookie | セッション固定 / 認証トークンの安全な保管 / Cookie属性 / 再認証 |
 | 多要素認証 | 認証・認可 / IAM | A/B | 5 | 2 | no | 認証要素 | フィッシング耐性 / WebAuthn / リスクベース認証 |
 | OAuth 2.0 / OIDC | 認証・認可 / IAM | B | 5 | 3 | no | HTTP / 認証と認可の違い | 認可コード / PKCE / IDトークン |
 | SAML | 認証・認可 / IAM | B | 4 | 3 | no | XML署名 / IdP / SP | Assertion / SSO / OAuth 2.0 |
@@ -80,7 +80,7 @@
 | インシデント対応ライフサイクル | インシデントレスポンス | B | 5 | 3 | no | ログ / リスク | 検知 / 封じ込め / 根絶 / 復旧 |
 | 証拠保全と初動 | インシデントレスポンス | B | 5 | 4 | no | 揮発性 / ハッシュ | chain of custody / 隔離 / メモリ取得 |
 | プレイブックとエスカレーション | インシデントレスポンス | B | 4 | 3 | no | インシデント分類 | CSIRT / 連絡体制 / 判断基準 |
-| Webアクセスログ分析 | ログ分析・監視 | B | 5 | 4 | no | HTTP / 時刻同期 | SQLi / traversal / status code |
+| Webアクセスログ分析 | ログ分析・監視 | B | 5 | 4 | no | HTTP / 時刻同期 | SQLi / traversal / 被害者候補の抽出 / status code |
 | SIEM相関分析 | ログ分析・監視 | B | 5 | 4 | no | 複数ログ / 正規化 | use case / false positive / UEBA |
 | EDRテレメトリ | ログ分析・監視 | B | 4 | 4 | no | プロセス / ネットワーク | process tree / hash / isolation |
 | 時刻同期とログ完全性 | ログ分析・監視 | B | 4 | 3 | no | NTP / ハッシュ | タイムライン / 改ざん防止 / 保管期間 |
@@ -88,17 +88,17 @@
 | Windows認証とイベントログ | OSセキュリティ | B | 4 | 4 | no | AD / Kerberos | Event ID / NTLM / credential dumping |
 | OSハードニング | OSセキュリティ | A/B | 4 | 3 | no | 最小機能 / パッチ | CIS benchmark / service / audit |
 | 責任共有モデル | クラウドセキュリティ | A/B | 5 | 2 | no | IaaS / PaaS / SaaS | IAM / 構成管理 / CSPM |
-| クラウドIAMと一時資格情報 | クラウドセキュリティ | B | 5 | 4 | no | IAM / トークン | role / metadata service / least privilege |
+| クラウドIAMと一時資格情報 | クラウドセキュリティ | B | 5 | 4 | no | IAM / トークン | role / マルチテナント分離 / metadata service / least privilege |
 | オブジェクトストレージ公開設定 | クラウドセキュリティ | B | 4 | 3 | no | ACL / policy | public access block / logging / encryption |
 | 入力検証と出力エンコーディング | セキュアプログラミング | B | 5 | 3 | no | データフロー | XSS / SQLi / allowlist |
 | TOCTOU | セキュアプログラミング | B | 3 | 4 | no | 並行処理 / ファイル権限 | race condition / atomic operation / symlink |
 | シークレット管理 | セキュアプログラミング | B | 4 | 3 | no | 暗号鍵 / 環境変数 | vault / rotation / source repository |
 | CVSSとリスクベース優先順位 | 脆弱性管理 | A/B | 5 | 3 | no | 脅威 / 影響 | EPSS / KEV / 資産重要度 |
-| 脆弱性管理ライフサイクル | 脆弱性管理 | B | 4 | 3 | no | 資産管理 | scan / triage / remediation / verification |
+| 脆弱性管理ライフサイクル | 脆弱性管理 | B | 4 | 3 | no | 資産管理 | セキュリティ診断の範囲設計 / scan / triage / remediation / verification |
 | リスク対応 | リスク・ガバナンス | A/B | 5 | 2 | no | 資産 / 脅威 / 脆弱性 | 回避 / 低減 / 移転 / 受容 |
 | ISMSとリスクアセスメント | リスク・ガバナンス | A/B | 4 | 3 | no | PDCA / 管理策 | リスク基準 / 残存リスク / SoA |
-| SBOMと依存関係リスク | サプライチェーン | B | 4 | 3 | no | パッケージ管理 | SCA / 署名 / provenance / VEX |
-| CI/CDパイプライン保護 | サプライチェーン | B | 4 | 4 | no | IAM / シークレット | artifact signing / runner / branch protection |
+| SBOMと依存関係リスク | サプライチェーン | B | 4 | 3 | no | パッケージ管理 | SCA / 外部スクリプト / 署名 / provenance / VEX |
+| CI/CDパイプライン保護 | サプライチェーン | B | 4 | 4 | no | IAM / シークレット | セキュアSDLC / 脅威モデリング / SAST / artifact signing / runner / branch protection |
 | ゼロトラスト原則 | ゼロトラスト | A/B | 4 | 3 | no | IAM / 端末管理 | 継続的検証 / microsegmentation / device posture |
 | デジタルフォレンジック手順 | フォレンジック | B | 4 | 4 | no | 証拠保全 / ハッシュ | 揮発性順序 / disk image / timeline |
 | CORS | Webセキュリティ | B | 4 | 3 | no | 同一オリジンポリシー / HTTP | preflight / Access-Control-Allow-Origin / credential |
@@ -106,7 +106,7 @@
 | クリックジャッキング | Webセキュリティ | B | 4 | 3 | no | ブラウザ / iframe | frame-ancestors / X-Frame-Options / UI redress |
 | HTTPリクエストスマグリング | Webセキュリティ | B | 4 | 4 | no | HTTP / プロキシ | Content-Length / Transfer-Encoding / フロントエンド・バックエンド不一致 |
 | JWTの検証 | Webセキュリティ | B | 5 | 3 | no | 電子署名 / 認証 | alg / iss / aud / exp |
-| APIセキュリティ | Webセキュリティ | B | 5 | 3 | no | HTTP / 認証・認可 | BOLA / レート制限 / 入力検証 |
+| APIセキュリティ | Webセキュリティ | B | 5 | 3 | no | HTTP / 認証・認可 | BOLA / IDOR / マルチテナント分離 / 認証トークン / レート制限 / 入力検証 |
 | 認証と認可の分離 | 認証・認可 / IAM | A/B | 5 | 2 | no | 利用者 / 権限 | authentication / authorization / 最小権限 |
 | WebAuthn / パスキー | 認証・認可 / IAM | B | 4 | 3 | no | 公開鍵暗号 / 多要素認証 | フィッシング耐性 / RP ID / authenticator |
 | パスワードポリシーとアカウントロック | 認証・認可 / IAM | A/B | 4 | 2 | no | パスワード認証 | ブルートフォース / rate limit / MFA |
@@ -136,7 +136,7 @@
 | MTA-STS / TLS-RPT | メールセキュリティ | B | 3 | 4 | no | SMTP / STARTTLS | TLS強制 / downgrade / レポート |
 | メールヘッダ解析 | メールセキュリティ | B | 4 | 3 | no | SMTP / SPF / DKIM | Received / Return-Path / Authentication-Results |
 | 添付ファイルとURLの無害化 | メールセキュリティ | B | 4 | 3 | no | マルウェア / メール | sandbox / URL rewrite / macro |
-| MITRE ATT&CK | マルウェア | B | 4 | 3 | no | 攻撃ライフサイクル | tactic / technique / detection |
+| MITRE ATT&CK | マルウェア | B | 4 | 3 | no | 攻撃ライフサイクル | tactic / technique / IoC / 脅威インテリジェンス / detection |
 | 認証情報窃取 | マルウェア | B | 5 | 3 | no | OS認証 / 権限 | credential dumping / LSASS / password reuse |
 | Living off the Land | マルウェア | B | 4 | 4 | no | OS / ログ分析 | LOLBins / PowerShell / 正規ツール悪用 |
 | 横展開 | マルウェア | B | 5 | 3 | no | ネットワーク / 認証 | SMB / RDP / 管理者資格情報 |
@@ -181,7 +181,7 @@
 | 事業継続計画（BCP） | リスク・ガバナンス | A/B | 4 | 3 | no | リスク / 可用性 | BIA / RTO / RPO |
 | 内部不正対策 | リスク・ガバナンス | A/B | 5 | 3 | no | 職務分離 / ログ | 監視 / 権限棚卸し / 通報 |
 | 依存関係混同 | サプライチェーン | B | 4 | 4 | no | パッケージ管理 / 名前空間 | dependency confusion / private registry / pinning |
-| コード署名と成果物署名 | サプライチェーン | B | 4 | 3 | no | 電子署名 / CI/CD | signing key / verify / artifact |
+| コード署名と成果物署名 | サプライチェーン | B | 4 | 3 | no | 電子署名 / CI/CD | ファームウェア更新 / signing key / verify / artifact |
 | ビルド来歴（provenance） | サプライチェーン | B | 4 | 4 | no | CI/CD / SBOM | SLSA / build metadata / 改ざん検知 |
 | 脆弱性開示とVEX | サプライチェーン | A/B | 3 | 3 | no | SBOM / 脆弱性管理 | disclosure / exploitability / VEX |
 | ZTNA | ゼロトラスト | B | 4 | 3 | no | ゼロトラスト / IAM | identity-aware proxy / アプリ単位アクセス / VPN |

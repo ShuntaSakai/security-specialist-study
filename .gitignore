@@ -50,8 +50,7 @@ htmlcov/
 *.temp
 *.bak
 
-# The initial official past-question archive is force-tracked intentionally.
-# Keep any subsequently added, untracked past-question files local.
+# IPA past-question PDFs are local reference material and are never tracked.
 /過去問/
 
 # Keep learning records under sessions/ and progress/ tracked.

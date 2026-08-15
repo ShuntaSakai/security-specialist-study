@@ -107,23 +107,28 @@ class 技能構造テスト(unittest.TestCase):
         taxonomy_text = (self.root / "references" / "taxonomy.md").read_text(
             encoding="utf-8"
         )
-        self.assertIn("every initial catalog term has `Recall Attempts >= 1`", skill_text)
+        self.assertIn("all 151 terms, then all roughly 250 terms, have `Recall Attempts >= 1`", skill_text)
         self.assertIn("80〜120 previously absent high-priority terms", skill_text)
-        self.assertIn("thereafter append 20〜40 terms", skill_text)
+        self.assertIn("20〜40 concrete-gap terms for later expansions", skill_text)
         self.assertIn("初回の151語すべてに`Recall Attempts`が1回以上", logic_text)
         self.assertIn("全151語に暗記語句問題として1回以上回答した後", taxonomy_text)
 
-    def test_ローカル過去問を版管理外で優先参照する(self) -> None:
+    def test_ローカル過去問は周回時又は明示指示時だけ参照する(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
         gitignore_text = (self.root / ".gitignore").read_text(encoding="utf-8")
         structure_text = (self.root / "docs" / "リポジトリ構成.md").read_text(
             encoding="utf-8"
         )
-        self.assertIn("every file under the local `過去問/` directory", skill_text)
-        self.assertIn("local IPA problem booklets", skill_text)
+        index_text = (self.root / "references" / "past-question-index.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("catalog-expansion review is due", skill_text)
+        self.assertIn("If the user explicitly asks to refer to past questions", skill_text)
+        self.assertIn("do not open past-question PDFs", skill_text)
         self.assertIn("/過去問/", gitignore_text)
-        self.assertIn("カタログ拡張時は、このディレクトリにある資料をオンライン資料より先に参照", structure_text)
-        self.assertIn("以後追加する未追跡ファイルはリモートへ送られません", structure_text)
+        self.assertIn("151語または約250語の暗記一周時", structure_text)
+        self.assertIn("日々の出題ではPDFも索引も読まず", structure_text)
+        self.assertIn("根拠年度", index_text)
 
     def test_わかりませんは回答済みとして採点するルールが文書化される(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
