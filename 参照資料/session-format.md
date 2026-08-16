@@ -2,9 +2,9 @@
 
 ## 新規セッション
 
-理解・応用問題は `sessions/理解・応用問題/YYYY-MM-DD.md`、暗記語句問題は `sessions/暗記語句問題/YYYY-MM-DD.md` に保存する。同じ日付について両ディレクトリと旧パスにあるSession番号を確認し、全体の最大番号へ1を足す。これにより `Applied Sessions` とhistoryで使う `YYYY-MM-DD#Session番号` を一意に保つ。
+理解・応用問題は `学習記録/理解・応用問題/YYYY-MM-DD.md`、暗記語句問題は `学習記録/暗記語句問題/YYYY-MM-DD.md` に保存する。同じ日付について両ディレクトリと旧パスにあるSession番号を確認し、全体の最大番号へ1を足す。これにより `Applied Sessions` とhistoryで使う `YYYY-MM-DD#Session番号` を一意に保つ。
 
-旧 `sessions/YYYY-MM-DD.md`、`sessions/standard/YYYY-MM-DD.md`、`sessions/term-recall/YYYY-MM-DD.md` は読み込み・採点・progress再構築のため引き続き受け付けるが、新しいSessionは必ず日本語名のモード別ディレクトリへ書く。利用者が見るディレクトリ名と内部識別子は分離し、Sessionメタデータの `Mode: adaptive` / `Mode: term-recall` とCLIの `--mode standard` / `--mode term-recall` は変更しない。
+旧 `学習記録/YYYY-MM-DD.md`、`学習記録/standard/YYYY-MM-DD.md`、`学習記録/term-recall/YYYY-MM-DD.md` は読み込み・採点・進捗再構築のため引き続き受け付けるが、新しいSessionは必ず日本語名のモード別ディレクトリへ書く。利用者が見るディレクトリ名と内部識別子は分離し、Sessionメタデータの `Mode: adaptive` / `Mode: term-recall` とCLIの `--mode standard` / `--mode term-recall` は変更しない。
 
 ```md
 # 2026-08-09 セキスペ学習
@@ -46,7 +46,7 @@
 
 ## 暗記語句セッション
 
-暗記語句問題は `sessions/暗記語句問題/YYYY-MM-DD.md` に書き、Sessionメタデータを次のようにする。
+暗記語句問題は `学習記録/暗記語句問題/YYYY-MM-DD.md` に書き、Sessionメタデータを次のようにする。
 
 ```md
 ## Session 2
@@ -79,9 +79,9 @@ CSRFとは何ですか？
 
 `Mode: term-recall` が暗記語句問題の判別子である。既存の `diagnosis`、`adaptive` などは通常説明問題として扱い、Mode自体がない旧Sessionも通常説明問題として読み込む。暗記語句問題はすべてLevel 1の短い語句説明形式とし、Trackによって長文化しない。正答の目安は「クラウドの提供側と利用者側で責任を分担すること。」のように、語句の核を一文で言えることとする。目的・特徴・仕組みの詳説は要求しない。各1問の `Primary Terms` は正確に1項目とし、1つのScoreで複数語句のRecall Scoreを更新しない。taxonomy上の複合名称は、1つのリスト項目として扱う。
 
-現行の日本語名ディレクトリに保存するSessionは `Mode` を1行だけ必須とし、`diagnosis`、`adaptive`、`term-recall` 以外の値や重複を許可しない。`sessions/理解・応用問題/` は `diagnosis` または `adaptive`、`sessions/暗記語句問題/` は `term-recall` だけを許可し、ディレクトリとModeの不一致は拒否する。Modeなしを通常問題として扱うことや、配置によるMode制約を加えない後方互換は、旧直下と旧英語ディレクトリのSessionにだけ適用する。
+現行の日本語名ディレクトリに保存するSessionは `Mode` を1行だけ必須とし、`diagnosis`、`adaptive`、`term-recall` 以外の値や重複を許可しない。`学習記録/理解・応用問題/` は `diagnosis` または `adaptive`、`学習記録/暗記語句問題/` は `term-recall` だけを許可し、ディレクトリとModeの不一致は拒否する。Modeなしを通常問題として扱うことや、配置によるMode制約を加えない後方互換は、旧直下と旧英語ディレクトリのSessionにだけ適用する。
 
-問題数は指定がなければ10問。指定時は1〜30問の範囲とする。Aは `floor(問題数 × 0.40)`、Bは残り全部とし、10問ならA4/B6、5問ならA2/B3にする。taxonomyのTrack `B` はSessionでも `B`、Track `A` または `A/B` はこのモードの配分上 `A` として出題する。`progress/terms.md` のTrackはtaxonomyの値を維持する。
+問題数は指定がなければ10問。指定時は1〜30問の範囲とする。Aは `floor(問題数 × 0.40)`、Bは残り全部とし、10問ならA4/B6、5問ならA2/B3にする。taxonomyのTrack `B` はSessionでも `B`、Track `A` または `A/B` はこのモードの配分上 `A` として出題する。`進捗/terms.md` のTrackはtaxonomyの値を維持する。
 
 ## 採点後
 

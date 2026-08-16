@@ -40,6 +40,27 @@ NORMAL_SESSION_MODES = frozenset({"diagnosis", "adaptive"})
 STANDARD_SESSION_DIRECTORY = "理解・応用問題"
 TERM_RECALL_SESSION_DIRECTORY = "暗記語句問題"
 LEGACY_SESSION_DIRECTORIES = (STANDARD_SESSION_MODE, TERM_RECALL_MODE)
+CURRENT_SESSIONS_DIRECTORY = "学習記録"
+CURRENT_PROGRESS_DIRECTORY = "進捗"
+CURRENT_REFERENCES_DIRECTORY = "参照資料"
+
+
+def study_directory(root: Path, current: str, legacy: str) -> Path:
+    """Use the Japanese directory name, with English-only test data as a fallback."""
+    current_path = root / current
+    return current_path if current_path.exists() else root / legacy
+
+
+def sessions_directory(root: Path) -> Path:
+    return study_directory(root, CURRENT_SESSIONS_DIRECTORY, "sessions")
+
+
+def progress_directory(root: Path) -> Path:
+    return study_directory(root, CURRENT_PROGRESS_DIRECTORY, "progress")
+
+
+def references_directory(root: Path) -> Path:
+    return study_directory(root, CURRENT_REFERENCES_DIRECTORY, "references")
 
 
 @dataclass(frozen=True)
@@ -156,7 +177,7 @@ def optional_score(value: str) -> Optional[int]:
 
 
 def load_catalog(root: Path) -> list[CatalogItem]:
-    rows = read_table(root / "references" / "taxonomy.md", "Term")
+    rows = read_table(references_directory(root) / "taxonomy.md", "Term")
     result = []
     for row in rows:
         result.append(
@@ -175,7 +196,7 @@ def load_catalog(root: Path) -> list[CatalogItem]:
 
 
 def load_terms(root: Path) -> dict[str, TermRecord]:
-    rows = read_table(root / "progress" / "terms.md", "Term")
+    rows = read_table(progress_directory(root) / "terms.md", "Term")
     result: dict[str, TermRecord] = {}
     for row in rows:
         score = as_int(row.get("Score", ""), -1)
@@ -373,7 +394,7 @@ def session_bounds(text: str, session_number: int) -> tuple[int, int]:
 
 def session_file_paths(root: Path) -> list[Path]:
     """Return current Session files plus legacy English and root-level files."""
-    sessions_root = root / "sessions"
+    sessions_root = sessions_directory(root)
     paths = [
         *sessions_root.glob("*.md"),
         *(sessions_root / STANDARD_SESSION_DIRECTORY).glob("*.md"),
@@ -393,7 +414,7 @@ def session_path_for_mode(root: Path, study_date: date, mode: str) -> Path:
         if mode == TERM_RECALL_MODE
         else STANDARD_SESSION_DIRECTORY
     )
-    return root / "sessions" / directory / f"{study_date.isoformat()}.md"
+    return sessions_directory(root) / directory / f"{study_date.isoformat()}.md"
 
 
 def session_mode(
@@ -422,7 +443,7 @@ def session_mode(
 
 
 def is_legacy_session_path(root: Path, path: Path) -> bool:
-    sessions_root = root / "sessions"
+    sessions_root = sessions_directory(root)
     return path.parent == sessions_root or (
         path.parent.parent == sessions_root
         and path.parent.name in LEGACY_SESSION_DIRECTORIES
@@ -430,7 +451,7 @@ def is_legacy_session_path(root: Path, path: Path) -> bool:
 
 
 def expected_mode_for_current_path(root: Path, path: Path) -> Optional[str]:
-    sessions_root = root / "sessions"
+    sessions_root = sessions_directory(root)
     if path.parent == sessions_root / STANDARD_SESSION_DIRECTORY:
         return STANDARD_SESSION_MODE
     if path.parent == sessions_root / TERM_RECALL_SESSION_DIRECTORY:
@@ -744,7 +765,7 @@ def update_term_records(
                 explanation_score=explanation_score,
                 explanation_attempts=explanation_attempts,
             )
-    atomic_write(root / "progress" / "terms.md", render_terms(records))
+    atomic_write(progress_directory(root) / "terms.md", render_terms(records))
     return records
 
 
@@ -887,11 +908,14 @@ def update_domains(
     records: dict[str, TermRecord],
     study_date: date,
 ) -> dict[str, int]:
-    existing = read_table(root / "progress" / "domains.md", "Domain")
+    existing = read_table(progress_directory(root) / "domains.md", "Domain")
     scored = all_scored_questions(root)
-    atomic_write(root / "progress" / "domains.md", render_domains(existing, records, scored, study_date))
+    atomic_write(
+        progress_directory(root) / "domains.md",
+        render_domains(existing, records, scored, study_date),
+    )
     result: dict[str, int] = {}
-    for row in read_table(root / "progress" / "domains.md", "Domain"):
+    for row in read_table(progress_directory(root) / "domains.md", "Domain"):
         score = as_int(row.get("Score", ""), -1)
         if score >= 0:
             result[row["Domain"]] = score
@@ -931,7 +955,7 @@ def update_history(
     records: dict[str, TermRecord],
     session_path: Path,
 ) -> dict[str, object]:
-    rows = read_table(root / "progress" / "history.md", "Date")
+    rows = read_table(progress_directory(root) / "history.md", "Date")
     average = round(sum(question.score for question in questions) / len(questions))
     b_ratio = round(100 * sum(question.track == "B" for question in questions) / len(questions))
     by_domain: dict[str, list[int]] = {}
@@ -950,7 +974,7 @@ def update_history(
     ]
     next_review = min(review_dates).isoformat() if review_dates else "—"
     relative_path = session_path.relative_to(root).as_posix()
-    history_target = os.path.relpath(session_path, root / "progress")
+    history_target = os.path.relpath(session_path, progress_directory(root))
     row = {
         "Date": study_date.isoformat(),
         "Session": str(session_number),
@@ -970,7 +994,7 @@ def update_history(
             break
     if not replaced:
         rows.append(row)
-    atomic_write(root / "progress" / "history.md", render_history(rows))
+    atomic_write(progress_directory(root) / "history.md", render_history(rows))
     return {
         "average": average,
         "weak": weak,
@@ -1075,11 +1099,14 @@ def rebuild_progress(root: Path) -> dict[str, int]:
     catalog = load_catalog(root)
     if not catalog:
         raise ValueError("Cannot rebuild progress without a concept catalog")
-    domain_rows = read_table(root / "progress" / "domains.md", "Domain")
+    domain_rows = read_table(progress_directory(root) / "domains.md", "Domain")
 
-    atomic_write(root / "progress" / "terms.md", render_terms({}))
-    atomic_write(root / "progress" / "domains.md", render_domains(domain_rows, {}, [], date.today()))
-    atomic_write(root / "progress" / "history.md", render_history([]))
+    atomic_write(progress_directory(root) / "terms.md", render_terms({}))
+    atomic_write(
+        progress_directory(root) / "domains.md",
+        render_domains(domain_rows, {}, [], date.today()),
+    )
+    atomic_write(progress_directory(root) / "history.md", render_history([]))
 
     for study_date, session_number, path, _, questions in sessions:
         records = update_term_records(root, study_date, session_number, questions, catalog)
