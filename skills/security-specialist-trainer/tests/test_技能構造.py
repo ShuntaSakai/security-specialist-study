@@ -26,6 +26,7 @@ class 技能構造テスト(unittest.TestCase):
             self.root / "進捗" / "terms.md",
             self.root / "進捗" / "domains.md",
             self.root / "進捗" / "history.md",
+            self.root / "進捗" / "未解答一覧.md",
             self.root / "参照資料" / "taxonomy.md",
             self.root / "参照資料" / "scoring-rules.md",
             self.root / "参照資料" / "session-format.md",
@@ -115,6 +116,19 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("--mode standard", session_text)
         self.assertIn("--mode term-recall", session_text)
         self.assertIn("1〜30問", session_text)
+
+    def test_未解答一覧を問題作成と採点の後に更新する(self) -> None:
+        script_text = (self.skill / "scripts" / "study_helper.py").read_text(
+            encoding="utf-8"
+        )
+        skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
+        session_text = (self.root / "参照資料" / "session-format.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('subparsers.add_parser(\n        "unanswered"', script_text)
+        self.assertIn("進捗/未解答一覧.md", skill_text)
+        self.assertIn("study_helper.py unanswered --root .", skill_text)
+        self.assertIn("study_helper.py unanswered --root .", session_text)
 
     def test_暗記語句を一周した後にカタログを拡張する(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")

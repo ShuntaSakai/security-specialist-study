@@ -124,6 +124,15 @@ class GradedQuestion:
     question_mode: str = EXPLANATION_MODE
 
 
+@dataclass(frozen=True)
+class UnansweredQuestion:
+    study_date: date
+    session_number: int
+    question_number: int
+    session_kind: str
+    primary_terms: tuple[str, ...]
+
+
 def split_markdown_row(line: str) -> list[str]:
     """Split the simple pipe tables used by this repository."""
     escaped = "\u0000"
@@ -406,6 +415,110 @@ def session_file_paths(root: Path) -> list[Path]:
         {path for path in paths if as_date(path.stem) is not None},
         key=lambda path: (as_date(path.stem) or date.min, path.as_posix()),
     )
+
+
+def unanswered_questions(root: Path) -> list[UnansweredQuestion]:
+    """Find question blocks whose answer contains only the standard placeholder."""
+    unanswered: list[UnansweredQuestion] = []
+    for path in session_file_paths(root):
+        study_date = as_date(path.stem)
+        if study_date is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        session_headings = list(
+            re.finditer(r"^## Session ([1-9][0-9]*)[ \t]*$", text, flags=re.MULTILINE)
+        )
+        for session_index, session_heading in enumerate(session_headings):
+            session_end = (
+                session_headings[session_index + 1].start()
+                if session_index + 1 < len(session_headings)
+                else len(text)
+            )
+            session = text[session_heading.start() : session_end]
+            if re.search(r"^- Status:[ \t]*cancelled[ \t]*$", session, flags=re.MULTILINE):
+                continue
+            session_number = int(session_heading.group(1))
+            try:
+                mode = session_mode_for_path(root, path, text, session_number)
+            except ValueError:
+                mode = TERM_RECALL_MODE if path.parent.name == TERM_RECALL_SESSION_DIRECTORY else STANDARD_SESSION_MODE
+            session_kind = "暗記語句問題" if mode == TERM_RECALL_MODE else "理解・応用問題"
+            question_headings = list(
+                re.finditer(r"^### Q([1-9][0-9]*)[ \t]*$", session, flags=re.MULTILINE)
+            )
+            for question_index, question_heading in enumerate(question_headings):
+                question_end = (
+                    question_headings[question_index + 1].start()
+                    if question_index + 1 < len(question_headings)
+                    else len(session)
+                )
+                question = session[question_heading.start() : question_end]
+                answer_match = re.search(
+                    r"^### 回答[ \t]*\n(?P<answer>.*?)(?=^### |\Z)",
+                    question,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
+                if answer_match is None:
+                    continue
+                answer = re.sub(r"<!--.*?-->", "", answer_match.group("answer"), flags=re.DOTALL)
+                if answer.strip():
+                    continue
+                primary_terms = parse_list_field(question, "Primary Terms")
+                unanswered.append(
+                    UnansweredQuestion(
+                        study_date=study_date,
+                        session_number=session_number,
+                        question_number=int(question_heading.group(1)),
+                        session_kind=session_kind,
+                        primary_terms=primary_terms,
+                    )
+                )
+    return sorted(
+        unanswered,
+        key=lambda item: (item.study_date, item.session_number, item.question_number),
+    )
+
+
+def render_unanswered_index(questions: list[UnansweredQuestion]) -> str:
+    lines = ["# 未解答一覧", "", "回答欄が空の問題だけを表示します。`わかりません` と記入した問題は未解答ではありません。", ""]
+    if not questions:
+        lines.append("未解答はありません。")
+        return "\n".join(lines) + "\n"
+    for kind in ("理解・応用問題", "暗記語句問題"):
+        entries = [question for question in questions if question.session_kind == kind]
+        if not entries:
+            continue
+        lines.extend([f"## {kind}", ""])
+        grouped: dict[tuple[date, int], list[int]] = {}
+        for question in entries:
+            grouped.setdefault((question.study_date, question.session_number), []).append(
+                question.question_number
+            )
+        for (study_date, session_number), numbers in grouped.items():
+            ranges: list[str] = []
+            range_start = range_end = numbers[0]
+            for number in numbers[1:]:
+                if number == range_end + 1:
+                    range_end = number
+                    continue
+                ranges.append(
+                    f"Q{range_start}" if range_start == range_end else f"Q{range_start}~{range_end}"
+                )
+                range_start = range_end = number
+            ranges.append(
+                f"Q{range_start}" if range_start == range_end else f"Q{range_start}~{range_end}"
+            )
+            lines.append(
+                f"- {study_date.isoformat()} / Session {session_number} / {', '.join(ranges)}"
+            )
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_unanswered_index(root: Path) -> Path:
+    path = progress_directory(root) / "未解答一覧.md"
+    atomic_write(path, render_unanswered_index(unanswered_questions(root)))
+    return path
 
 
 def session_path_for_mode(root: Path, study_date: date, mode: str) -> Path:
@@ -1571,6 +1684,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Rebuild Markdown progress from all fully scored Sessions in chronological order.",
     )
     rebuild_parser.add_argument("--root", type=Path, default=default_root())
+    unanswered_parser = subparsers.add_parser(
+        "unanswered",
+        help="Write a compact Markdown list of unanswered questions.",
+    )
+    unanswered_parser.add_argument("--root", type=Path, default=default_root())
     return parser.parse_args(argv)
 
 
@@ -1602,6 +1720,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"error: {error}", file=sys.stderr)
             return 2
         print(f"Rebuilt {result['sessions']} sessions and {result['questions']} questions")
+        return 0
+
+    if args.command == "unanswered":
+        path = write_unanswered_index(root)
+        print(f"Wrote {len(unanswered_questions(root))} unanswered questions to {path}")
         return 0
 
     catalog = load_catalog(root)

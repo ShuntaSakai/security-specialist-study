@@ -88,6 +88,70 @@ class 学習支援テスト(unittest.TestCase):
             study_helper.finalize_session(session_path, 1, summary)
             self.assertTrue(session_path.read_bytes().endswith(b"\n"))
 
+    def test_未解答一覧は空欄だけをモード別に表示する(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            standard_dir = root / "学習記録" / "理解・応用問題"
+            recall_dir = root / "学習記録" / "暗記語句問題"
+            standard_dir.mkdir(parents=True)
+            recall_dir.mkdir(parents=True)
+            (root / "進捗").mkdir()
+            (standard_dir / "2026-08-17.md").write_text(
+                """## Session 1
+
+- Status: awaiting_answers
+- Mode: adaptive
+- Question Count: 2
+
+### Q1
+
+- Primary Terms:
+  - `SQLインジェクション`
+
+### 回答
+
+<!-- この行の下に回答を書いてください -->
+
+### Q2
+
+- Primary Terms:
+  - `XSS`
+
+### 回答
+
+<!-- この行の下に回答を書いてください -->
+""",
+                encoding="utf-8",
+            )
+            (recall_dir / "2026-08-17.md").write_text(
+                """## Session 2
+
+- Status: awaiting_answers
+- Mode: term-recall
+- Question Count: 1
+
+### Q1
+
+- Primary Terms:
+  - `CSRF`
+
+### 回答
+
+<!-- この行の下に回答を書いてください -->
+""",
+                encoding="utf-8",
+            )
+
+            path = study_helper.write_unanswered_index(root)
+            index = path.read_text(encoding="utf-8")
+
+            self.assertEqual(root / "進捗" / "未解答一覧.md", path)
+            self.assertIn("## 理解・応用問題", index)
+            self.assertIn("2026-08-17 / Session 1 / Q1~2", index)
+            self.assertIn("## 暗記語句問題", index)
+            self.assertIn("2026-08-17 / Session 2 / Q1", index)
+            self.assertNotIn("SQLインジェクション", index)
+
     def test_初回の分野指定が診断構成を変える(self) -> None:
         plan = study_helper.diagnostic_plan(self.catalog, 8, "Webセキュリティ")
         web_count = sum(candidate.item.domain == "Webセキュリティ" for _, candidate in plan)
