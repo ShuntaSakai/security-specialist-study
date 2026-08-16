@@ -5,7 +5,7 @@ description: Markdown-based adaptive trainer for Japan's Registered Information 
 
 # Security Specialist Trainer
 
-Build recall and explanation skill from Markdown history. Treat the repository containing this skill as the study root: from this file, resolve `../..` as the root. Keep `sessions/` and `progress/` as the source of truth; never replace them with JSON state.
+Build recall and explanation skill from Markdown history. Treat the repository containing this skill as the study root: from this file, resolve `../..` as the root. Keep `学習記録/` and `進捗/` as the source of truth; never replace them with JSON state.
 
 ## Route the request
 
@@ -16,18 +16,18 @@ Choose one workflow:
 - Show results or mastery: follow **Report progress**.
 - Combine requests only when the user clearly asks for both; finish grading before generating later adaptive questions.
 
-Read [session-format.md](../../references/session-format.md) before writing or grading a session. Read [scoring-rules.md](../../references/scoring-rules.md) before selecting adaptive questions or assigning scores. Read [taxonomy.md](../../references/taxonomy.md) when introducing concepts, checking prerequisites, or resolving domains and related terms.
+Read [session-format.md](../../参照資料/session-format.md) before writing or grading a session. Read [scoring-rules.md](../../参照資料/scoring-rules.md) before selecting adaptive questions or assigning scores. Read [taxonomy.md](../../参照資料/taxonomy.md) when introducing concepts, checking prerequisites, or resolving domains and related terms.
 
 ## Generate a session
 
 Perform these steps in order:
 
 1. Obtain the actual local date as `YYYY-MM-DD`; do not infer it from an old session filename.
-2. Read every file under `progress/`.
-3. Read the latest three session files across `sessions/理解・応用問題/` and `sessions/暗記語句問題/`, including every session in those files. Also accept legacy files under `sessions/standard/`, `sessions/term-recall/`, or directly under `sessions/`. Read more only when notes or related weaknesses require it.
+2. Read every file under `進捗/`.
+3. Read the latest three session files across `学習記録/理解・応用問題/` and `学習記録/暗記語句問題/`, including every session in those files. Also accept legacy files under `学習記録/standard/`, `学習記録/term-recall/`, or directly under `学習記録/`. Read more only when notes or related weaknesses require it.
 4. Inspect domain scores, term scores, last-study dates, attempts, averages, recent difficulty, next-review dates, and recent domain mix.
-   Use `references/taxonomy.md` and `progress/` as the learning evidence for daily selection. Read recent Sessions only to prevent materially duplicated wording; do not open past-question PDFs or `references/past-question-index.md` during a routine daily session.
-5. Estimate forgetting and priority using `../../references/scoring-rules.md`.
+   Use `参照資料/taxonomy.md` and `進捗/` as the learning evidence for daily selection. Read recent Sessions only to prevent materially duplicated wording; do not open past-question PDFs or `参照資料/past-question-index.md` during a routine daily session.
+5. Estimate forgetting and priority using `../../参照資料/scoring-rules.md`.
 6. Run the deterministic planner unless it is unavailable:
 
    ```bash
@@ -37,7 +37,7 @@ Perform these steps in order:
 
    Add `--count N`, `--focus 'Webセキュリティ'`, or `--mode weak|new|subject-b|light|term-recall` to reflect the request. Explicit counts must be between 1 and 30 for every mode; do not clamp an out-of-range request. Use `--mode term-recall` for a term-recall request. Use the planner as a candidate plan, not as permission to ignore prerequisites or recent question wording.
 7. A default normal session has six questions: two weak, one due review, two new, and one strong/challenge. When the user explicitly requests more than six normal questions, retain those six slots and make every additional slot new. Keep Subject B material around 70–85%. For term-recall sessions, follow **Generate a term-recall session** below. An explicit focus or style such as weak/new/subject-b takes precedence over this default allocation.
-8. Write normal questions to `sessions/理解・応用問題/YYYY-MM-DD.md` and term-recall questions to `sessions/暗記語句問題/YYYY-MM-DD.md`. Determine the next Session number from every file for that date across both current directories and all legacy Session paths. Create the target file heading if absent; otherwise append without changing earlier sessions. Every Session must contain exactly one integer `Question Count` from 1 to 30. Keep internal metadata and CLI identifiers in English (`Mode: adaptive`, `Mode: term-recall`, `--mode standard`, and `--mode term-recall`).
+8. Write normal questions to `学習記録/理解・応用問題/YYYY-MM-DD.md` and term-recall questions to `学習記録/暗記語句問題/YYYY-MM-DD.md`. Determine the next Session number from every file for that date across both current directories and all legacy Session paths. Create the target file heading if absent; otherwise append without changing earlier sessions. Every Session must contain exactly one integer `Question Count` from 1 to 30. Keep internal metadata and CLI identifiers in English (`Mode: adaptive`, `Mode: term-recall`, `--mode standard`, and `--mode term-recall`).
 
 Use eight cross-domain Level 2–3 questions for an unassessed first session unless the user specifies a count or asks for light practice. For the default eight, use exactly one question from each of Web, network, cryptography, authentication, PKI, DNS, email, and malware; do not substitute another domain. Use six questions normally and three for light practice.
 
@@ -65,7 +65,7 @@ python3 skills/security-specialist-trainer/scripts/study_helper.py plan \
 
 The planner treats the existing overall score, mode-specific scores, attempts, last-study date, last score, next review, forgetting, recent appearances, weak related terms, and unassessed terms as one adaptive history. Normal sessions use Explanation Score for their own weakness and difficulty; term-recall sessions use Recall Score for their own weakness and retention judgment. A mode with no evidence is unseen in that mode, while the other mode still contributes cross-mode priority. Do not replace the result with random selection. Use exact taxonomy terms, assign exactly one Primary Term to each question, and do not assign the same Primary Term twice in one Session.
 
-Before creating the next term-recall Session, compare every current taxonomy term with `progress/terms.md`. A graded `わかりません` counts as one Recall Attempt; an Explanation Attempt alone does not. Read `references/past-question-index.md` only for a catalog review, never for a routine daily Session. When a catalog-expansion review is due (all 151 terms, then all roughly 250 terms, have `Recall Attempts >= 1`), inspect the local `過去問/` PDFs and the current official IPA SC syllabus. This directory is intentionally Git-ignored and may be absent or empty; use official online sources for missing years. Save the analysis as concise theme, candidate-term, and evidence-year entries in `references/past-question-index.md`, then append 80〜120 previously absent high-priority terms for the first expansion or 20〜40 concrete-gap terms for later expansions. If the user explicitly asks to refer to past questions, inspect the PDFs even outside a full-lap review, then update the same index and any justified catalog relationships. Prioritize recurring terms, terms needed to explain Subject B scenarios, and prerequisites; set `Importance` and `Related` consistently with the existing catalog. Do not delete or rename existing terms, duplicate terms, or invent additions when official sources do not support them. Update the catalog's source/date/count note and the affected user-facing documentation, then plan from the expanded catalog.
+Before creating the next term-recall Session, compare every current taxonomy term with `進捗/terms.md`. A graded `わかりません` counts as one Recall Attempt; an Explanation Attempt alone does not. Read `参照資料/past-question-index.md` only for a catalog review, never for a routine daily Session. When a catalog-expansion review is due (all 151 terms, then all roughly 250 terms, have `Recall Attempts >= 1`), inspect the local `過去問/` PDFs and the current official IPA SC syllabus. This directory is intentionally Git-ignored and may be absent or empty; use official online sources for missing years. Save the analysis as concise theme, candidate-term, and evidence-year entries in `参照資料/past-question-index.md`, then append 80〜120 previously absent high-priority terms for the first expansion or 20〜40 concrete-gap terms for later expansions. If the user explicitly asks to refer to past questions, inspect the PDFs even outside a full-lap review, then update the same index and any justified catalog relationships. Prioritize recurring terms, terms needed to explain Subject B scenarios, and prerequisites; set `Importance` and `Related` consistently with the existing catalog. Do not delete or rename existing terms, duplicate terms, or invent additions when official sources do not support them. Update the catalog's source/date/count note and the affected user-facing documentation, then plan from the expanded catalog.
 
 Set `Mode: term-recall`, `Level: 1`, and `Track A/B Target: 40% / 60%`. Use `A = floor(count * 0.40)` and assign every remainder to B, so 5 questions are A2/B3 and 10 are A4/B6. For this mode, taxonomy Track `B` stays Session Track `B`; taxonomy Track `A` or `A/B` uses Session Track `A`. The progress catalog Track remains unchanged.
 
@@ -76,11 +76,11 @@ Use the short question emitted in the plan, normally「`用語`とは何です�
 Perform these steps in order:
 
 1. Search every Session location below before selecting a grading target:
-   - Current normal sessions: `sessions/理解・応用問題/`
-   - Current term-recall sessions: `sessions/暗記語句問題/`
-   - Legacy normal sessions: `sessions/standard/`
-   - Legacy term-recall sessions: `sessions/term-recall/`
-   - Legacy root-level sessions: `sessions/YYYY-MM-DD.md`
+   - Current normal sessions: `学習記録/理解・応用問題/`
+   - Current term-recall sessions: `学習記録/暗記語句問題/`
+   - Legacy normal sessions: `学習記録/standard/`
+   - Legacy term-recall sessions: `学習記録/term-recall/`
+   - Legacy root-level sessions: `学習記録/YYYY-MM-DD.md`
    For every Session, inspect the questions, answers, grading blocks, and Session Summary. Do **not** select by `Status`: `awaiting_answers` often remains after a user fills every answer. Ignore the standard HTML placeholder when deciding whether an answer is blank. A Session is a grading candidate when every answer is nonblank and either a question lacks a valid `### 採点` block or its Session Summary does not confirm `Progress updated`. Skip a Session with a user-requested `cancelled` Status.
 2. Unless the user names a date or Session number, select **all** grading candidates and sort them in chronological order: date ascending, then Session number ascending. If a date or Session number is named, limit the selection to that Session. An incomplete Session is not a candidate: list its unanswered question numbers, but do not let it block other completed Sessions.
 3. Process the full sorted candidate list sequentially. Finish scoring and recording the earlier Session before changing progress for the next one; this preserves chronological updates for overlapping Primary Terms. In both normal (understanding/application) and `term-recall` sessions, an explicit response such as `わかりません` is nonblank and must be scored `0 / 100` with a compact model explanation and next-review focus.
@@ -94,7 +94,10 @@ Perform these steps in order:
    - In both normal and `term-recall` sessions, decide for each graded answer whether the feedback reveals a reusable prose learning point worth retaining as「学んだこと」. If it does, inspect `復習用/学んだこと/README.md` and the closest existing domain note before adding it. Keep the note concise and avoid duplicating an existing explanation.
    - Record each new prose learning point under a level-2 date heading in the relevant `復習用/学んだこと/<分野>.md`, using the actual date of writing in JST as `## YYYY-MM-DD`. If that file already has a heading for the same date, append beneath it without adding a second date heading. Do not recreate the old single-file `復習用/学んだこと.md`.
    - Choose the most useful domain file rather than forcing an unrelated note into an existing category. When a new category is warranted, create `復習用/学んだこと/<分野>.md` and add it to `README.md`. You may also reorganize the domain notes when their boundaries or amount of content make retrieval harder: move retained content into clearer files, update the index and links in `README.md`, and preserve all learning points and their date headings. Do not leave duplicate copies after a reorganization.
-7. For each selected Session, run the idempotent recorder only after every question has one valid score. In the current Japanese Session directories, the recorder requires exactly one supported `Mode` (`diagnosis`, `adaptive`, or `term-recall`) and requires the directory to match that Mode: `sessions/理解・応用問題/` accepts normal modes and `sessions/暗記語句問題/` accepts only `term-recall`. Only legacy root-level and English-directory Sessions may omit Mode or ignore directory-to-Mode correspondence. For every mode, the recorder rejects a Session unless it has exactly one integer `Question Count` from 1 to 30, the declared count equals the actual question count, and question headings are unique and consecutive from `Q1`. It also rejects any heading beginning with `### Q` that is not an exact positive-integer question heading. For `term-recall`, it additionally requires exactly one Primary Term per question and rejects any non-Level-1 question, any Track value other than the literal `A` or `B` (including the literal `A/B`), or Track allocation that differs from `A = floor(count * 0.40)` and `B = remainder`. All validation happens before changing progress:
+   - Also update the next-day review file for **every** graded answer in both normal and `term-recall` sessions. Use the next calendar date in JST as `YYYY-MM-DD` and aggregate all answers graded on the same calendar day into the single file `復習用/明日復習するべきところ/YYYY-MM-DD.md`. Create the directory and file when needed; use a title that identifies the review date and record the grading date.
+   - Include every answer with `Score < 100`, including answers that are mostly correct or only miss a small detail. Do not add 100-point answers. Group entries by `理解・応用問題` and `暗記語句問題`, and include the source Session date/number and Q number, primary term, score, and a compact next-review point based on the missing-or-mistaken feedback and the next-review focus.
+   - The next-day review file is a short-term checklist, so it may intentionally overlap with `復習用/学んだこと/`. When reprocessing a Session, update its existing entry identified by Session and Q number instead of adding a duplicate. Do not remove entries from other Sessions that were graded on the same day.
+7. For each selected Session, run the idempotent recorder only after every question has one valid score. In the current Japanese Session directories, the recorder requires exactly one supported `Mode` (`diagnosis`, `adaptive`, or `term-recall`) and requires the directory to match that Mode: `学習記録/理解・応用問題/` accepts normal modes and `学習記録/暗記語句問題/` accepts only `term-recall`. Only legacy root-level and English-directory Sessions may omit Mode or ignore directory-to-Mode correspondence. For every mode, the recorder rejects a Session unless it has exactly one integer `Question Count` from 1 to 30, the declared count equals the actual question count, and question headings are unique and consecutive from `Q1`. It also rejects any heading beginning with `### Q` that is not an exact positive-integer question heading. For `term-recall`, it additionally requires exactly one Primary Term per question and rejects any non-Level-1 question, any Track value other than the literal `A` or `B` (including the literal `A/B`), or Track allocation that differs from `A = floor(count * 0.40)` and `B = remainder`. All validation happens before changing progress:
 
    ```bash
    python3 skills/security-specialist-trainer/scripts/study_helper.py record \
@@ -110,13 +113,13 @@ Perform these steps in order:
 
    This recovery replaces only derived progress files from the scored Session history and preserves the original Session Markdown. For other recorder failures, leave that Session's Status as `grading`, report the error, and stop before processing a later candidate. Never claim progress was updated and never set `graded` manually before all three progress files succeed.
 
-Use `../../references/scoring-rules.md` as the arithmetic authority. Update only Primary Terms numerically; Related Terms remain context until directly assessed. Keep all three progress files mutually consistent: the same date, domain name, question count, average, and next-review conclusions must agree. If the recorder is unavailable, reproduce its ordering and idempotency rules manually and mark `graded` only as the final write.
+Use `../../参照資料/scoring-rules.md` as the arithmetic authority. Update only Primary Terms numerically; Related Terms remain context until directly assessed. Keep all three progress files mutually consistent: the same date, domain name, question count, average, and next-review conclusions must agree. If the recorder is unavailable, reproduce its ordering and idempotency rules manually and mark `graded` only as the final write.
 
 After each Session, reread the graded Session and the three progress files. Confirm one score per question, a correct arithmetic average, no duplicate term row, and no duplicate history row. If a new review diagram was created, render or otherwise verify that its Mermaid syntax is valid before reporting it. In chat, list every processed Session with its average, strongest point, most important gap, next review date, and links to any newly created review diagrams; link each session file.
 
 ## Report progress
 
-Read all files under `progress/` and enough recent sessions to explain the current estimates. Report concisely:
+Read all files under `進捗/` and enough recent sessions to explain the current estimates. Report concisely:
 
 1. Overall weighted picture and whether evidence is still provisional.
 2. Domain scores and levels.

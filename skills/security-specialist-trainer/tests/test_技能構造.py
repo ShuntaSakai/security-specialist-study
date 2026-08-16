@@ -23,25 +23,28 @@ class 技能構造テスト(unittest.TestCase):
             self.root / "docs" / "リポジトリ構成.md",
             self.root / "docs" / "出題・採点ロジック.md",
             self.root / "docs" / "開発・テスト.md",
-            self.root / "progress" / "terms.md",
-            self.root / "progress" / "domains.md",
-            self.root / "progress" / "history.md",
-            self.root / "references" / "taxonomy.md",
-            self.root / "references" / "scoring-rules.md",
-            self.root / "references" / "session-format.md",
+            self.root / "進捗" / "terms.md",
+            self.root / "進捗" / "domains.md",
+            self.root / "進捗" / "history.md",
+            self.root / "参照資料" / "taxonomy.md",
+            self.root / "参照資料" / "scoring-rules.md",
+            self.root / "参照資料" / "session-format.md",
         ]
         self.assertEqual([], [str(path) for path in expected if not path.is_file()])
-        self.assertTrue((self.root / "sessions" / "理解・応用問題").is_dir())
-        self.assertTrue((self.root / "sessions" / "暗記語句問題").is_dir())
+        self.assertTrue((self.root / "学習記録" / "理解・応用問題").is_dir())
+        self.assertTrue((self.root / "学習記録" / "暗記語句問題").is_dir())
 
     def test_復習メモと流れ図を専用ディレクトリへ保存する(self) -> None:
         review_dir = self.root / "復習用"
         notes_dir = review_dir / "学んだこと"
+        next_day_dir = review_dir / "明日復習するべきところ"
         diagram_dir = review_dir / "流れ図"
         self.assertTrue(notes_dir.is_dir())
         self.assertTrue((notes_dir / "README.md").is_file())
         self.assertTrue(any(notes_dir.glob("*.md")))
         self.assertFalse((review_dir / "学んだこと.md").exists())
+        self.assertTrue(next_day_dir.is_dir())
+        self.assertTrue((next_day_dir / "README.md").is_file())
         self.assertTrue(diagram_dir.is_dir())
 
         diagram_files = sorted(diagram_dir.glob("*.md"))
@@ -62,6 +65,8 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("## YYYY-MM-DD", skill_text)
         self.assertIn("both normal and `term-recall` sessions", skill_text)
         self.assertIn("You may also reorganize the domain notes", skill_text)
+        self.assertIn("復習用/明日復習するべきところ/YYYY-MM-DD.md", skill_text)
+        self.assertIn("Include every answer with `Score < 100`", skill_text)
 
     def test_ルート説明書から詳細文書を参照できる(self) -> None:
         readme = (self.root / "README.md").read_text(encoding="utf-8")
@@ -94,15 +99,15 @@ class 技能構造テスト(unittest.TestCase):
 
     def test_暗記語句の手順と形式が文書化される(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
-        session_text = (self.root / "references" / "session-format.md").read_text(encoding="utf-8")
-        scoring_text = (self.root / "references" / "scoring-rules.md").read_text(encoding="utf-8")
+        session_text = (self.root / "参照資料" / "session-format.md").read_text(encoding="utf-8")
+        scoring_text = (self.root / "参照資料" / "scoring-rules.md").read_text(encoding="utf-8")
         self.assertIn("--mode term-recall", skill_text)
         self.assertIn("create exactly 10 questions", skill_text)
         self.assertIn("- Mode: term-recall", session_text)
         self.assertIn("Recall Score", scoring_text)
         self.assertIn("Explanation Score", scoring_text)
-        self.assertIn("sessions/理解・応用問題/YYYY-MM-DD.md", session_text)
-        self.assertIn("sessions/暗記語句問題/YYYY-MM-DD.md", session_text)
+        self.assertIn("学習記録/理解・応用問題/YYYY-MM-DD.md", session_text)
+        self.assertIn("学習記録/暗記語句問題/YYYY-MM-DD.md", session_text)
         self.assertIn("--mode standard", session_text)
         self.assertIn("--mode term-recall", session_text)
         self.assertIn("1〜30問", session_text)
@@ -112,7 +117,7 @@ class 技能構造テスト(unittest.TestCase):
         logic_text = (self.root / "docs" / "出題・採点ロジック.md").read_text(
             encoding="utf-8"
         )
-        taxonomy_text = (self.root / "references" / "taxonomy.md").read_text(
+        taxonomy_text = (self.root / "参照資料" / "taxonomy.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("all 151 terms, then all roughly 250 terms, have `Recall Attempts >= 1`", skill_text)
@@ -127,7 +132,7 @@ class 技能構造テスト(unittest.TestCase):
         structure_text = (self.root / "docs" / "リポジトリ構成.md").read_text(
             encoding="utf-8"
         )
-        index_text = (self.root / "references" / "past-question-index.md").read_text(
+        index_text = (self.root / "参照資料" / "past-question-index.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("catalog-expansion review is due", skill_text)
@@ -140,10 +145,10 @@ class 技能構造テスト(unittest.TestCase):
 
     def test_わかりませんは回答済みとして採点するルールが文書化される(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
-        session_text = (self.root / "references" / "session-format.md").read_text(
+        session_text = (self.root / "参照資料" / "session-format.md").read_text(
             encoding="utf-8"
         )
-        scoring_text = (self.root / "references" / "scoring-rules.md").read_text(
+        scoring_text = (self.root / "参照資料" / "scoring-rules.md").read_text(
             encoding="utf-8"
         )
         usage_text = (self.root / "docs" / "使い方.md").read_text(encoding="utf-8")
@@ -167,11 +172,11 @@ class 技能構造テスト(unittest.TestCase):
         assert grade_section_match
         grade_section = grade_section_match.group("body")
         for session_path in (
-            "sessions/理解・応用問題/",
-            "sessions/暗記語句問題/",
-            "sessions/standard/",
-            "sessions/term-recall/",
-            "sessions/YYYY-MM-DD.md",
+            "学習記録/理解・応用問題/",
+            "学習記録/暗記語句問題/",
+            "学習記録/standard/",
+            "学習記録/term-recall/",
+            "学習記録/YYYY-MM-DD.md",
         ):
             with self.subTest(session_path=session_path):
                 self.assertIn(session_path, grade_section)
@@ -184,7 +189,7 @@ class 技能構造テスト(unittest.TestCase):
 
     def test_採点対象は回答内容で選び全件を時系列で処理する(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
-        session_text = (self.root / "references" / "session-format.md").read_text(
+        session_text = (self.root / "参照資料" / "session-format.md").read_text(
             encoding="utf-8"
         )
         usage_text = (self.root / "docs" / "使い方.md").read_text(encoding="utf-8")
@@ -205,7 +210,7 @@ class 技能構造テスト(unittest.TestCase):
             encoding="utf-8"
         )
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
-        session_text = (self.root / "references" / "session-format.md").read_text(
+        session_text = (self.root / "参照資料" / "session-format.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("def rebuild_progress", script_text)
