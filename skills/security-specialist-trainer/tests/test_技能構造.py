@@ -67,6 +67,10 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("You may also reorganize the domain notes", skill_text)
         self.assertIn("復習用/明日復習するべきところ/YYYY-MM-DD.md", skill_text)
         self.assertIn("Include every answer with `Score < 100`", skill_text)
+        self.assertIn("standalone short explanation", skill_text)
+        self.assertIn("関連する新語", skill_text)
+        self.assertIn("Importance >= 4", skill_text)
+        self.assertIn("Track B", skill_text)
 
     def test_ルート説明書から詳細文書を参照できる(self) -> None:
         readme = (self.root / "README.md").read_text(encoding="utf-8")
