@@ -63,6 +63,21 @@ def references_directory(root: Path) -> Path:
     return study_directory(root, CURRENT_REFERENCES_DIRECTORY, "references")
 
 
+def localized_file(directory: Path, japanese_name: str, legacy_name: str) -> Path:
+    """Use Japanese study files while preserving English-only fixture compatibility."""
+    if directory.name in {"progress", "references"} and not (directory / japanese_name).exists():
+        return directory / legacy_name
+    return directory / japanese_name
+
+
+def progress_file(root: Path, japanese_name: str, legacy_name: str) -> Path:
+    return localized_file(progress_directory(root), japanese_name, legacy_name)
+
+
+def reference_file(root: Path, japanese_name: str, legacy_name: str) -> Path:
+    return localized_file(references_directory(root), japanese_name, legacy_name)
+
+
 @dataclass(frozen=True)
 class CatalogItem:
     term: str
@@ -186,7 +201,7 @@ def optional_score(value: str) -> Optional[int]:
 
 
 def load_catalog(root: Path) -> list[CatalogItem]:
-    rows = read_table(references_directory(root) / "taxonomy.md", "Term")
+    rows = read_table(reference_file(root, "出題分類と概念カタログ.md", "taxonomy.md"), "Term")
     result = []
     for row in rows:
         result.append(
@@ -205,7 +220,7 @@ def load_catalog(root: Path) -> list[CatalogItem]:
 
 
 def load_terms(root: Path) -> dict[str, TermRecord]:
-    rows = read_table(progress_directory(root) / "terms.md", "Term")
+    rows = read_table(progress_file(root, "語句別理解度.md", "terms.md"), "Term")
     result: dict[str, TermRecord] = {}
     for row in rows:
         score = as_int(row.get("Score", ""), -1)
@@ -878,7 +893,7 @@ def update_term_records(
                 explanation_score=explanation_score,
                 explanation_attempts=explanation_attempts,
             )
-    atomic_write(progress_directory(root) / "terms.md", render_terms(records))
+    atomic_write(progress_file(root, "語句別理解度.md", "terms.md"), render_terms(records))
     return records
 
 
@@ -1021,14 +1036,14 @@ def update_domains(
     records: dict[str, TermRecord],
     study_date: date,
 ) -> dict[str, int]:
-    existing = read_table(progress_directory(root) / "domains.md", "Domain")
+    existing = read_table(progress_file(root, "分野別理解度.md", "domains.md"), "Domain")
     scored = all_scored_questions(root)
     atomic_write(
-        progress_directory(root) / "domains.md",
+        progress_file(root, "分野別理解度.md", "domains.md"),
         render_domains(existing, records, scored, study_date),
     )
     result: dict[str, int] = {}
-    for row in read_table(progress_directory(root) / "domains.md", "Domain"):
+    for row in read_table(progress_file(root, "分野別理解度.md", "domains.md"), "Domain"):
         score = as_int(row.get("Score", ""), -1)
         if score >= 0:
             result[row["Domain"]] = score
@@ -1068,7 +1083,7 @@ def update_history(
     records: dict[str, TermRecord],
     session_path: Path,
 ) -> dict[str, object]:
-    rows = read_table(progress_directory(root) / "history.md", "Date")
+    rows = read_table(progress_file(root, "学習履歴.md", "history.md"), "Date")
     average = round(sum(question.score for question in questions) / len(questions))
     b_ratio = round(100 * sum(question.track == "B" for question in questions) / len(questions))
     by_domain: dict[str, list[int]] = {}
@@ -1107,7 +1122,7 @@ def update_history(
             break
     if not replaced:
         rows.append(row)
-    atomic_write(progress_directory(root) / "history.md", render_history(rows))
+    atomic_write(progress_file(root, "学習履歴.md", "history.md"), render_history(rows))
     return {
         "average": average,
         "weak": weak,
@@ -1139,7 +1154,7 @@ def finalize_session(
         f"- Strong points: {strong}\n"
         f"- Weak points: {weak}\n"
         f"- Recommended next review: {summary['next_review']}\n"
-        "- Progress updated: terms.md / domains.md / history.md\n"
+        "- Progress updated: 語句別理解度.md / 分野別理解度.md / 学習履歴.md\n"
     )
     summary_pattern = re.compile(
         rf"^## Session {session_number} Summary[ \t]*$.*\Z",
@@ -1212,14 +1227,14 @@ def rebuild_progress(root: Path) -> dict[str, int]:
     catalog = load_catalog(root)
     if not catalog:
         raise ValueError("Cannot rebuild progress without a concept catalog")
-    domain_rows = read_table(progress_directory(root) / "domains.md", "Domain")
+    domain_rows = read_table(progress_file(root, "分野別理解度.md", "domains.md"), "Domain")
 
-    atomic_write(progress_directory(root) / "terms.md", render_terms({}))
+    atomic_write(progress_file(root, "語句別理解度.md", "terms.md"), render_terms({}))
     atomic_write(
-        progress_directory(root) / "domains.md",
+        progress_file(root, "分野別理解度.md", "domains.md"),
         render_domains(domain_rows, {}, [], date.today()),
     )
-    atomic_write(progress_directory(root) / "history.md", render_history([]))
+    atomic_write(progress_file(root, "学習履歴.md", "history.md"), render_history([]))
 
     for study_date, session_number, path, _, questions in sessions:
         records = update_term_records(root, study_date, session_number, questions, catalog)
@@ -1729,7 +1744,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     catalog = load_catalog(root)
     if not catalog:
-        print(f"error: no concept catalog found under {root / 'references' / 'taxonomy.md'}", file=sys.stderr)
+        print(f"error: no concept catalog found under {root / '参照資料' / '出題分類と概念カタログ.md'}", file=sys.stderr)
         return 2
     terms = load_terms(root)
     catalog = merge_uncatalogued_terms(catalog, terms)

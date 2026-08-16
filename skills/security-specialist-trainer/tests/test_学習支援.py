@@ -1111,7 +1111,7 @@ Score: 100 / 100
             (root / "references").mkdir()
             (root / "progress").mkdir()
             (root / "sessions").mkdir()
-            taxonomy = self.root / "参照資料" / "taxonomy.md"
+            taxonomy = self.root / "参照資料" / "出題分類と概念カタログ.md"
             (root / "references" / "taxonomy.md").write_text(taxonomy.read_text(encoding="utf-8"), encoding="utf-8")
             (root / "progress" / "terms.md").write_text(
                 "| Term | Domain | Score | Last Studied | Attempts | Average | Last Level | Next Review | Related | Notes |\n"
@@ -1167,11 +1167,11 @@ Score: 55 / 100
             (root / "references").mkdir()
             (root / "progress").mkdir()
             (root / "sessions" / "暗記語句問題").mkdir(parents=True)
-            shutil.copy(self.root / "参照資料" / "taxonomy.md", root / "references" / "taxonomy.md")
+            shutil.copy(self.root / "参照資料" / "出題分類と概念カタログ.md", root / "references" / "taxonomy.md")
             (root / "progress" / "terms.md").write_text(
                 study_helper.render_terms({}), encoding="utf-8"
             )
-            shutil.copy(self.root / "進捗" / "domains.md", root / "progress" / "domains.md")
+            shutil.copy(self.root / "進捗" / "分野別理解度.md", root / "progress" / "domains.md")
             (root / "progress" / "history.md").write_text(
                 study_helper.render_history([]), encoding="utf-8"
             )
@@ -1338,11 +1338,11 @@ Score: 20 / 100
             (root / "references").mkdir()
             (root / "progress").mkdir()
             (root / "sessions").mkdir()
-            shutil.copy(self.root / "参照資料" / "taxonomy.md", root / "references" / "taxonomy.md")
+            shutil.copy(self.root / "参照資料" / "出題分類と概念カタログ.md", root / "references" / "taxonomy.md")
             (root / "progress" / "terms.md").write_text(
                 study_helper.render_terms({}), encoding="utf-8"
             )
-            shutil.copy(self.root / "進捗" / "domains.md", root / "progress" / "domains.md")
+            shutil.copy(self.root / "進捗" / "分野別理解度.md", root / "progress" / "domains.md")
             (root / "progress" / "history.md").write_text(
                 study_helper.render_history([]), encoding="utf-8"
             )
