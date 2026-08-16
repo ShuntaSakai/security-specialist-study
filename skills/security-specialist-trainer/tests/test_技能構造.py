@@ -34,10 +34,14 @@ class 技能構造テスト(unittest.TestCase):
         self.assertTrue((self.root / "sessions" / "理解・応用問題").is_dir())
         self.assertTrue((self.root / "sessions" / "暗記語句問題").is_dir())
 
-    def test_復習用の流れ図を専用ディレクトリへ保存する(self) -> None:
+    def test_復習メモと流れ図を専用ディレクトリへ保存する(self) -> None:
         review_dir = self.root / "復習用"
+        notes_dir = review_dir / "学んだこと"
         diagram_dir = review_dir / "流れ図"
-        self.assertTrue((review_dir / "学んだこと.md").is_file())
+        self.assertTrue(notes_dir.is_dir())
+        self.assertTrue((notes_dir / "README.md").is_file())
+        self.assertTrue(any(notes_dir.glob("*.md")))
+        self.assertFalse((review_dir / "学んだこと.md").exists())
         self.assertTrue(diagram_dir.is_dir())
 
         diagram_files = sorted(diagram_dir.glob("*.md"))
@@ -54,6 +58,10 @@ class 技能構造テスト(unittest.TestCase):
 
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("復習用/流れ図/<topic>.md", skill_text)
+        self.assertIn("復習用/学んだこと/<分野>.md", skill_text)
+        self.assertIn("## YYYY-MM-DD", skill_text)
+        self.assertIn("both normal and `term-recall` sessions", skill_text)
+        self.assertIn("You may also reorganize the domain notes", skill_text)
 
     def test_ルート説明書から詳細文書を参照できる(self) -> None:
         readme = (self.root / "README.md").read_text(encoding="utf-8")
