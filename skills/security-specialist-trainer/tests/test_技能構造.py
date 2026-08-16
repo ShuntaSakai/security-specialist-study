@@ -73,6 +73,19 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("Importance >= 4", skill_text)
         self.assertIn("Track B", skill_text)
 
+    def test_翌日復習に全件掲載と優先度を併記する規則がある(self) -> None:
+        skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
+        review_readme = (
+            self.root / "復習用" / "明日復習するべきところ" / "README.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Include every answer with `Score < 100`", skill_text)
+        self.assertIn("`最優先` for 0〜69", skill_text)
+        self.assertIn("`確認` for 70〜89", skill_text)
+        self.assertIn("`軽い確認` for 90〜99", skill_text)
+        self.assertIn("100点未満なら必ず掲載", review_readme)
+        self.assertIn("最優先", review_readme)
+        self.assertIn("軽い確認", review_readme)
+
     def test_ルート説明書から詳細文書を参照できる(self) -> None:
         readme = (self.root / "README.md").read_text(encoding="utf-8")
         document_paths = (
