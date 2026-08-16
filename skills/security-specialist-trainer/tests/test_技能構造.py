@@ -179,6 +179,20 @@ class 技能構造テスト(unittest.TestCase):
         self.assertIn("理解・応用問題", scoring_text)
         self.assertIn("理解・応用問題", usage_text)
 
+    def test_設問外の補足不足で減点しない採点規則が文書化される(self) -> None:
+        skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
+        scoring_text = (self.root / "参照資料" / "採点・理解度・復習ルール.md").read_text(
+            encoding="utf-8"
+        )
+        logic_text = (self.root / "docs" / "出題・採点ロジック.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("explicitly asks for", skill_text)
+        self.assertIn("optional enrichment", skill_text)
+        self.assertIn("問題文で明示していない観点", scoring_text)
+        self.assertIn("満点とし", scoring_text)
+        self.assertIn("補足知識がないことを理由に部分点へ下げません", logic_text)
+
     def test_採点手順は現在と旧セッション保存先を全て明記する(self) -> None:
         skill_text = (self.skill / "SKILL.md").read_text(encoding="utf-8")
         grade_section_match = re.search(
