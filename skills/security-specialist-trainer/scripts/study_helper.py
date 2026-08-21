@@ -146,6 +146,7 @@ class UnansweredQuestion:
     question_number: int
     session_kind: str
     primary_terms: tuple[str, ...]
+    session_link_path: str
 
 
 def split_markdown_row(line: str) -> list[str]:
@@ -486,6 +487,9 @@ def unanswered_questions(root: Path) -> list[UnansweredQuestion]:
                         question_number=int(question_heading.group(1)),
                         session_kind=session_kind,
                         primary_terms=primary_terms,
+                        session_link_path=Path(
+                            os.path.relpath(path, progress_directory(root))
+                        ).as_posix(),
                     )
                 )
     return sorted(
@@ -504,12 +508,17 @@ def render_unanswered_index(questions: list[UnansweredQuestion]) -> str:
         if not entries:
             continue
         lines.extend([f"## {kind}", ""])
-        grouped: dict[tuple[date, int], list[int]] = {}
+        grouped: dict[tuple[date, int, str], list[int]] = {}
         for question in entries:
-            grouped.setdefault((question.study_date, question.session_number), []).append(
-                question.question_number
-            )
-        for (study_date, session_number), numbers in grouped.items():
+            grouped.setdefault(
+                (
+                    question.study_date,
+                    question.session_number,
+                    question.session_link_path,
+                ),
+                [],
+            ).append(question.question_number)
+        for (study_date, session_number, session_link_path), numbers in grouped.items():
             ranges: list[str] = []
             range_start = range_end = numbers[0]
             for number in numbers[1:]:
@@ -517,14 +526,19 @@ def render_unanswered_index(questions: list[UnansweredQuestion]) -> str:
                     range_end = number
                     continue
                 ranges.append(
-                    f"Q{range_start}" if range_start == range_end else f"Q{range_start}~{range_end}"
+                    f"Q{range_start}"
+                    if range_start == range_end
+                    else f"Q{range_start}~{range_end}"
                 )
                 range_start = range_end = number
             ranges.append(
-                f"Q{range_start}" if range_start == range_end else f"Q{range_start}~{range_end}"
+                f"Q{range_start}"
+                if range_start == range_end
+                else f"Q{range_start}~{range_end}"
             )
             lines.append(
-                f"- {study_date.isoformat()} / Session {session_number} / {', '.join(ranges)}"
+                f"- [{study_date.isoformat()} / Session {session_number} / "
+                f"{', '.join(ranges)}]({session_link_path})"
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

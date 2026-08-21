@@ -147,9 +147,15 @@ class 学習支援テスト(unittest.TestCase):
 
             self.assertEqual(root / "進捗" / "未解答一覧.md", path)
             self.assertIn("## 理解・応用問題", index)
-            self.assertIn("2026-08-17 / Session 1 / Q1~2", index)
+            self.assertIn(
+                "[2026-08-17 / Session 1 / Q1~2](../学習記録/理解・応用問題/2026-08-17.md)",
+                index,
+            )
             self.assertIn("## 暗記語句問題", index)
-            self.assertIn("2026-08-17 / Session 2 / Q1", index)
+            self.assertIn(
+                "[2026-08-17 / Session 2 / Q1](../学習記録/暗記語句問題/2026-08-17.md)",
+                index,
+            )
             self.assertNotIn("SQLインジェクション", index)
 
     def test_初回の分野指定が診断構成を変える(self) -> None:
