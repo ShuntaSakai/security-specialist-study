@@ -50,4 +50,7 @@ htmlcov/
 *.temp
 *.bak
 
+# IPA past-question PDFs are local reference material and are never tracked.
+/過去問/
+
 # Keep learning records under sessions/ and progress/ tracked.

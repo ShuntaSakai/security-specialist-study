@@ -1,4 +1,4 @@
 interface:
   display_name: "セキスペ適応学習トレーナー"
-  short_description: "学習履歴に基づき科目B重視の記述問題を出題・採点します"
-  default_prompt: "Use $security-specialist-trainer to create today’s adaptive security-specialist practice questions."
+  short_description: "学習履歴に基づき暗記語句と科目B記述を出題・採点します"
+  default_prompt: "Use $security-specialist-trainer to create today’s adaptive term-recall or written security-specialist practice questions."

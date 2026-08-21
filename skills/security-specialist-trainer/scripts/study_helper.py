@@ -15,7 +15,7 @@ import re
 import stat
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Optional
@@ -31,6 +31,51 @@ DIAGNOSTIC_DOMAIN_ORDER = [
     "メールセキュリティ",
     "マルウェア",
 ]
+
+TERM_RECALL_MODE = "term-recall"
+EXPLANATION_MODE = "explanation"
+STANDARD_SESSION_MODE = "standard"
+DEFAULT_NORMAL_QUESTION_COUNT = 6
+NORMAL_SESSION_MODES = frozenset({"diagnosis", "adaptive"})
+STANDARD_SESSION_DIRECTORY = "理解・応用問題"
+TERM_RECALL_SESSION_DIRECTORY = "暗記語句問題"
+LEGACY_SESSION_DIRECTORIES = (STANDARD_SESSION_MODE, TERM_RECALL_MODE)
+CURRENT_SESSIONS_DIRECTORY = "学習記録"
+CURRENT_PROGRESS_DIRECTORY = "進捗"
+CURRENT_REFERENCES_DIRECTORY = "参照資料"
+
+
+def study_directory(root: Path, current: str, legacy: str) -> Path:
+    """Use the Japanese directory name, with English-only test data as a fallback."""
+    current_path = root / current
+    return current_path if current_path.exists() else root / legacy
+
+
+def sessions_directory(root: Path) -> Path:
+    return study_directory(root, CURRENT_SESSIONS_DIRECTORY, "sessions")
+
+
+def progress_directory(root: Path) -> Path:
+    return study_directory(root, CURRENT_PROGRESS_DIRECTORY, "progress")
+
+
+def references_directory(root: Path) -> Path:
+    return study_directory(root, CURRENT_REFERENCES_DIRECTORY, "references")
+
+
+def localized_file(directory: Path, japanese_name: str, legacy_name: str) -> Path:
+    """Use Japanese study files while preserving English-only fixture compatibility."""
+    if directory.name in {"progress", "references"} and not (directory / japanese_name).exists():
+        return directory / legacy_name
+    return directory / japanese_name
+
+
+def progress_file(root: Path, japanese_name: str, legacy_name: str) -> Path:
+    return localized_file(progress_directory(root), japanese_name, legacy_name)
+
+
+def reference_file(root: Path, japanese_name: str, legacy_name: str) -> Path:
+    return localized_file(references_directory(root), japanese_name, legacy_name)
 
 
 @dataclass(frozen=True)
@@ -61,6 +106,10 @@ class TermRecord:
     last_score: Optional[int] = None
     last_session: str = ""
     applied_sessions: tuple[str, ...] = ()
+    recall_score: Optional[int] = None
+    recall_attempts: int = 0
+    explanation_score: Optional[int] = None
+    explanation_attempts: int = 0
 
 
 @dataclass(frozen=True)
@@ -87,6 +136,17 @@ class GradedQuestion:
     score: int
     good_point: str
     review_focus: str
+    question_mode: str = EXPLANATION_MODE
+
+
+@dataclass(frozen=True)
+class UnansweredQuestion:
+    study_date: date
+    session_number: int
+    question_number: int
+    session_kind: str
+    primary_terms: tuple[str, ...]
+    session_link_path: str
 
 
 def split_markdown_row(line: str) -> list[str]:
@@ -134,8 +194,15 @@ def as_date(value: str) -> Optional[date]:
         return None
 
 
+def optional_score(value: str) -> Optional[int]:
+    score = as_int(value, -1)
+    if score < 0:
+        return None
+    return max(0, min(100, score))
+
+
 def load_catalog(root: Path) -> list[CatalogItem]:
-    rows = read_table(root / "references" / "taxonomy.md", "Term")
+    rows = read_table(reference_file(root, "出題分類と概念カタログ.md", "taxonomy.md"), "Term")
     result = []
     for row in rows:
         result.append(
@@ -154,7 +221,7 @@ def load_catalog(root: Path) -> list[CatalogItem]:
 
 
 def load_terms(root: Path) -> dict[str, TermRecord]:
-    rows = read_table(root / "progress" / "terms.md", "Term")
+    rows = read_table(progress_file(root, "語句別理解度.md", "terms.md"), "Term")
     result: dict[str, TermRecord] = {}
     for row in rows:
         score = as_int(row.get("Score", ""), -1)
@@ -170,6 +237,15 @@ def load_terms(root: Path) -> dict[str, TermRecord]:
         )
         if not applied_sessions and last_session:
             applied_sessions = (last_session,)
+        has_mode_columns = "Recall Score" in row or "Explanation Score" in row
+        explanation_score = (
+            optional_score(row.get("Explanation Score", "")) if has_mode_columns else score
+        )
+        explanation_attempts = (
+            as_int(row.get("Explanation Attempts", "0"))
+            if has_mode_columns
+            else as_int(row.get("Attempts", "0"))
+        )
         result[row["Term"]] = TermRecord(
             term=row["Term"],
             domain=row["Domain"],
@@ -189,6 +265,10 @@ def load_terms(root: Path) -> dict[str, TermRecord]:
             ),
             last_session=last_session,
             applied_sessions=applied_sessions,
+            recall_score=optional_score(row.get("Recall Score", "")),
+            recall_attempts=as_int(row.get("Recall Attempts", "0")),
+            explanation_score=explanation_score,
+            explanation_attempts=explanation_attempts,
         )
     return result
 
@@ -247,14 +327,24 @@ def level_cap(level: int) -> int:
     return {1: 70, 2: 80, 3: 88, 4: 94, 5: 100, 6: 100}.get(level, 100)
 
 
-def updated_mastery(old_score: Optional[int], attempts: int, answer_score: int, level: int) -> int:
-    evidence = min(max(answer_score, 0), level_cap(level))
+def blend_mastery(old_score: Optional[int], attempts: int, evidence: int, answer_score: int) -> int:
+    evidence = max(0, min(100, evidence))
     if old_score is None or attempts <= 0:
         return evidence
     alpha = 0.45 if attempts <= 2 else 0.35 if attempts <= 5 else 0.30
     if answer_score < 40:
         alpha += 0.10
     return round(old_score * (1 - alpha) + evidence * alpha)
+
+
+def updated_mastery(old_score: Optional[int], attempts: int, answer_score: int, level: int) -> int:
+    evidence = min(max(answer_score, 0), level_cap(level))
+    return blend_mastery(old_score, attempts, evidence, answer_score)
+
+
+def updated_recall_mastery(old_score: Optional[int], attempts: int, answer_score: int) -> int:
+    """Track definition recall on its own 0-100 scale without the overall Level 1 cap."""
+    return blend_mastery(old_score, attempts, answer_score, answer_score)
 
 
 def next_interval(score: int, answer_score: int, level: int, stable_high_count: int = 0) -> int:
@@ -327,14 +417,314 @@ def session_bounds(text: str, session_number: int) -> tuple[int, int]:
     raise ValueError(f"Session {session_number} not found")
 
 
-def parse_graded_session(text: str, session_number: int) -> tuple[str, list[GradedQuestion]]:
+def session_file_paths(root: Path) -> list[Path]:
+    """Return current Session files plus legacy English and root-level files."""
+    sessions_root = sessions_directory(root)
+    paths = [
+        *sessions_root.glob("*.md"),
+        *(sessions_root / STANDARD_SESSION_DIRECTORY).glob("*.md"),
+        *(sessions_root / TERM_RECALL_SESSION_DIRECTORY).glob("*.md"),
+    ]
+    for directory in LEGACY_SESSION_DIRECTORIES:
+        paths.extend((sessions_root / directory).glob("*.md"))
+    return sorted(
+        {path for path in paths if as_date(path.stem) is not None},
+        key=lambda path: (as_date(path.stem) or date.min, path.as_posix()),
+    )
+
+
+def unanswered_questions(root: Path) -> list[UnansweredQuestion]:
+    """Find question blocks whose answer contains only the standard placeholder."""
+    unanswered: list[UnansweredQuestion] = []
+    for path in session_file_paths(root):
+        study_date = as_date(path.stem)
+        if study_date is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        session_headings = list(
+            re.finditer(r"^## Session ([1-9][0-9]*)[ \t]*$", text, flags=re.MULTILINE)
+        )
+        for session_index, session_heading in enumerate(session_headings):
+            session_end = (
+                session_headings[session_index + 1].start()
+                if session_index + 1 < len(session_headings)
+                else len(text)
+            )
+            session = text[session_heading.start() : session_end]
+            if re.search(r"^- Status:[ \t]*cancelled[ \t]*$", session, flags=re.MULTILINE):
+                continue
+            session_number = int(session_heading.group(1))
+            try:
+                mode = session_mode_for_path(root, path, text, session_number)
+            except ValueError:
+                mode = TERM_RECALL_MODE if path.parent.name == TERM_RECALL_SESSION_DIRECTORY else STANDARD_SESSION_MODE
+            session_kind = "暗記語句問題" if mode == TERM_RECALL_MODE else "理解・応用問題"
+            question_headings = list(
+                re.finditer(r"^### Q([1-9][0-9]*)[ \t]*$", session, flags=re.MULTILINE)
+            )
+            for question_index, question_heading in enumerate(question_headings):
+                question_end = (
+                    question_headings[question_index + 1].start()
+                    if question_index + 1 < len(question_headings)
+                    else len(session)
+                )
+                question = session[question_heading.start() : question_end]
+                answer_match = re.search(
+                    r"^### 回答[ \t]*\n(?P<answer>.*?)(?=^### |\Z)",
+                    question,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
+                if answer_match is None:
+                    continue
+                answer = re.sub(r"<!--.*?-->", "", answer_match.group("answer"), flags=re.DOTALL)
+                if answer.strip():
+                    continue
+                primary_terms = parse_list_field(question, "Primary Terms")
+                unanswered.append(
+                    UnansweredQuestion(
+                        study_date=study_date,
+                        session_number=session_number,
+                        question_number=int(question_heading.group(1)),
+                        session_kind=session_kind,
+                        primary_terms=primary_terms,
+                        session_link_path=Path(
+                            os.path.relpath(path, progress_directory(root))
+                        ).as_posix(),
+                    )
+                )
+    return sorted(
+        unanswered,
+        key=lambda item: (item.study_date, item.session_number, item.question_number),
+    )
+
+
+def render_unanswered_index(questions: list[UnansweredQuestion]) -> str:
+    lines = ["# 未解答一覧", ""]
+    if not questions:
+        lines.append("未解答はありません。")
+        return "\n".join(lines) + "\n"
+    for kind in ("理解・応用問題", "暗記語句問題"):
+        entries = [question for question in questions if question.session_kind == kind]
+        if not entries:
+            continue
+        lines.extend([f"## {kind}", ""])
+        grouped: dict[tuple[date, int, str], list[int]] = {}
+        for question in entries:
+            grouped.setdefault(
+                (
+                    question.study_date,
+                    question.session_number,
+                    question.session_link_path,
+                ),
+                [],
+            ).append(question.question_number)
+        for (study_date, session_number, session_link_path), numbers in grouped.items():
+            ranges: list[str] = []
+            range_start = range_end = numbers[0]
+            for number in numbers[1:]:
+                if number == range_end + 1:
+                    range_end = number
+                    continue
+                ranges.append(
+                    f"Q{range_start}"
+                    if range_start == range_end
+                    else f"Q{range_start}~{range_end}"
+                )
+                range_start = range_end = number
+            ranges.append(
+                f"Q{range_start}"
+                if range_start == range_end
+                else f"Q{range_start}~{range_end}"
+            )
+            lines.append(
+                f"- [{study_date.isoformat()} / Session {session_number} / "
+                f"{', '.join(ranges)}]({session_link_path})"
+            )
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_unanswered_index(root: Path) -> Path:
+    path = progress_directory(root) / "未解答一覧.md"
+    atomic_write(path, render_unanswered_index(unanswered_questions(root)))
+    return path
+
+
+def session_path_for_mode(root: Path, study_date: date, mode: str) -> Path:
+    directory = (
+        TERM_RECALL_SESSION_DIRECTORY
+        if mode == TERM_RECALL_MODE
+        else STANDARD_SESSION_DIRECTORY
+    )
+    return sessions_directory(root) / directory / f"{study_date.isoformat()}.md"
+
+
+def session_mode(
+    text: str,
+    session_number: int,
+    allow_missing: bool = True,
+) -> str:
+    start, end = session_bounds(text, session_number)
+    section = text[start:end]
+    values = re.findall(r"^- Mode:[ \t]*(\S+)[ \t]*$", section, flags=re.MULTILINE)
+    if not values:
+        if allow_missing:
+            return STANDARD_SESSION_MODE
+        raise ValueError(f"Session {session_number} must have exactly one Mode")
+    if len(values) != 1:
+        raise ValueError(f"Session {session_number} must have exactly one Mode")
+    value = values[0]
+    if value == TERM_RECALL_MODE:
+        return TERM_RECALL_MODE
+    if value in NORMAL_SESSION_MODES:
+        return STANDARD_SESSION_MODE
+    allowed = ", ".join(sorted((*NORMAL_SESSION_MODES, TERM_RECALL_MODE)))
+    raise ValueError(
+        f"Session {session_number} has unsupported Mode {value!r}; expected one of: {allowed}"
+    )
+
+
+def is_legacy_session_path(root: Path, path: Path) -> bool:
+    sessions_root = sessions_directory(root)
+    return path.parent == sessions_root or (
+        path.parent.parent == sessions_root
+        and path.parent.name in LEGACY_SESSION_DIRECTORIES
+    )
+
+
+def expected_mode_for_current_path(root: Path, path: Path) -> Optional[str]:
+    sessions_root = sessions_directory(root)
+    if path.parent == sessions_root / STANDARD_SESSION_DIRECTORY:
+        return STANDARD_SESSION_MODE
+    if path.parent == sessions_root / TERM_RECALL_SESSION_DIRECTORY:
+        return TERM_RECALL_MODE
+    return None
+
+
+def session_mode_for_path(
+    root: Path,
+    path: Path,
+    text: str,
+    session_number: int,
+) -> str:
+    actual_mode = session_mode(
+        text,
+        session_number,
+        allow_missing=is_legacy_session_path(root, path),
+    )
+    expected_mode = expected_mode_for_current_path(root, path)
+    if expected_mode is not None and actual_mode != expected_mode:
+        raise ValueError(
+            f"Session {session_number} under {path.parent} must use {expected_mode} mode, "
+            f"not {actual_mode}"
+        )
+    return actual_mode
+
+
+def next_session_number(root: Path, study_date: date) -> int:
+    numbers = []
+    for path in session_file_paths(root):
+        if as_date(path.stem) != study_date:
+            continue
+        text = path.read_text(encoding="utf-8")
+        numbers.extend(
+            int(match.group(1))
+            for match in re.finditer(r"^## Session (\d+)[ \t]*$", text, flags=re.MULTILINE)
+        )
+    return max(numbers, default=0) + 1
+
+
+def resolve_session_path(
+    root: Path,
+    study_date: date,
+    session_number: int,
+    mode: Optional[str] = None,
+) -> Path:
+    matches: list[tuple[Path, str]] = []
+    for path in session_file_paths(root):
+        if as_date(path.stem) != study_date:
+            continue
+        text = path.read_text(encoding="utf-8")
+        try:
+            session_bounds(text, session_number)
+        except ValueError:
+            continue
+        actual_mode = session_mode_for_path(root, path, text, session_number)
+        matches.append((path, actual_mode))
+    if not matches:
+        expected = session_path_for_mode(root, study_date, mode or STANDARD_SESSION_MODE)
+        raise ValueError(f"Session {session_number} not found for {study_date}: expected under {expected.parent}")
+    if len(matches) > 1:
+        paths = ", ".join(str(path) for path, _ in matches)
+        raise ValueError(
+            f"Session {study_date.isoformat()}#{session_number} exists in multiple files: {paths}"
+        )
+    path, actual_mode = matches[0]
+    if mode is not None and actual_mode != mode:
+        raise ValueError(
+            f"Session {study_date.isoformat()}#{session_number} is {actual_mode}, not {mode}: {path}"
+        )
+    return path
+
+
+def parse_graded_session(
+    text: str,
+    session_number: int,
+    allow_missing_mode: bool = True,
+) -> tuple[str, list[GradedQuestion]]:
     start, end = session_bounds(text, session_number)
     session = text[start:end]
     status_match = re.search(r"^- Status:[ \t]*(\S+)[ \t]*$", session, flags=re.MULTILINE)
     if not status_match:
         raise ValueError(f"Session {session_number} has no Status")
     status = status_match.group(1)
-    question_headings = list(re.finditer(r"^### Q(\d+)[ \t]*$", session, flags=re.MULTILINE))
+    parsed_mode = session_mode(text, session_number, allow_missing=allow_missing_mode)
+    question_mode = TERM_RECALL_MODE if parsed_mode == TERM_RECALL_MODE else EXPLANATION_MODE
+    question_count_values = re.findall(
+        r"^- Question Count:[ \t]*(.*?)[ \t]*$", session, flags=re.MULTILINE
+    )
+    if len(question_count_values) != 1:
+        raise ValueError(
+            f"Session {session_number} must have exactly one Question Count"
+        )
+    question_count_text = question_count_values[0]
+    if not re.fullmatch(r"\d+", question_count_text):
+        raise ValueError(f"Session {session_number} Question Count must be an integer")
+    question_count = int(question_count_text)
+    if not 1 <= question_count <= 30:
+        raise ValueError(
+            f"Session {session_number} Question Count must be between 1 and 30"
+        )
+    question_heading_candidates = list(
+        re.finditer(r"^###[ \t]+Q[^\r\n]*$", session, flags=re.MULTILINE)
+    )
+    invalid_question_headings = [
+        heading.group(0).strip()
+        for heading in question_heading_candidates
+        if not re.fullmatch(r"### Q[1-9][0-9]*[ \t]*", heading.group(0))
+    ]
+    if invalid_question_headings:
+        invalid = ", ".join(invalid_question_headings)
+        raise ValueError(
+            f"Session {session_number} has invalid question headings: {invalid}"
+        )
+    question_headings = list(
+        re.finditer(r"^### Q([1-9][0-9]*)[ \t]*$", session, flags=re.MULTILINE)
+    )
+    if len(question_headings) != question_count:
+        raise ValueError(
+            f"Session {session_number} Question Count is {question_count}, "
+            f"but found {len(question_headings)} question headings"
+        )
+    actual_question_numbers = [heading.group(1) for heading in question_headings]
+    expected_question_numbers = [str(number) for number in range(1, question_count + 1)]
+    if actual_question_numbers != expected_question_numbers:
+        actual = ", ".join(f"Q{number}" for number in actual_question_numbers)
+        expected = ", ".join(f"Q{number}" for number in expected_question_numbers)
+        raise ValueError(
+            f"Session {session_number} question headings must be consecutive and unique "
+            f"from Q1; expected {expected}, got {actual}"
+        )
     questions: list[GradedQuestion] = []
     seen_primary: set[str] = set()
     for index, heading in enumerate(question_headings):
@@ -373,10 +763,28 @@ def parse_graded_session(text: str, session_number: int) -> tuple[str, list[Grad
                 score=score,
                 good_point=_first_feedback_bullet(block, "良かった点"),
                 review_focus=_first_feedback_bullet(block, "次回確認する観点"),
+                question_mode=question_mode,
             )
         )
     if not questions:
         raise ValueError(f"Session {session_number} has no questions")
+    if question_mode == TERM_RECALL_MODE:
+        if any(len(question.primary_terms) != 1 for question in questions):
+            raise ValueError(
+                "term-recall questions must have exactly one Primary Term each"
+            )
+        if any(question.level != 1 for question in questions):
+            raise ValueError("term-recall questions must use Level 1")
+        if any(question.track not in {"A", "B"} for question in questions):
+            raise ValueError("term-recall questions must use Track A or B")
+        expected_a, expected_b = term_recall_track_counts(question_count)
+        actual_a = sum(question.track == "A" for question in questions)
+        actual_b = sum(question.track == "B" for question in questions)
+        if (actual_a, actual_b) != (expected_a, expected_b):
+            raise ValueError(
+                "term-recall Track allocation must be "
+                f"A {expected_a} / B {expected_b}; got A {actual_a} / B {actual_b}"
+            )
     return status, questions
 
 
@@ -384,10 +792,10 @@ def render_terms(records: dict[str, TermRecord]) -> str:
     lines = [
         "# 語句・概念ごとの理解度",
         "",
-        "`Score` は現在の総合理解度、`Average` は過去の問題点の平均です。日付は `YYYY-MM-DD`、未設定値は `—` とします。`Applied Sessions` は採点の二重反映を防ぐ台帳です。",
+        "`Score` は両モードを合わせた現在の総合理解度です。`Recall Score` は暗記語句、`Explanation Score` は通常説明で確認した理解度、`Average` は全問題点の平均です。日付は `YYYY-MM-DD`、未設定値は `—` とし、`Applied Sessions` は採点の二重反映を防ぐ台帳です。",
         "",
-        "| Term | Domain | Track | Score | Last Studied | Last Session | Applied Sessions | Attempts | Average | Last Score | Last Level | Next Review | Related | Notes |",
-        "|---|---|---|---:|---|---|---|---:|---:|---:|---:|---|---|---|",
+        "| Term | Domain | Track | Score | Recall Score | Explanation Score | Last Studied | Last Session | Applied Sessions | Attempts | Recall Attempts | Explanation Attempts | Average | Last Score | Last Level | Next Review | Related | Notes |",
+        "|---|---|---|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|---|---|---|",
     ]
     for record in records.values():
         values = [
@@ -395,10 +803,14 @@ def render_terms(records: dict[str, TermRecord]) -> str:
             record.domain,
             record.track,
             record.score,
+            record.recall_score if record.recall_score is not None else "—",
+            record.explanation_score if record.explanation_score is not None else "—",
             record.last_studied.isoformat() if record.last_studied else "—",
             record.last_session or "—",
             ", ".join(record.applied_sessions) or "—",
             record.attempts,
+            record.recall_attempts,
+            record.explanation_attempts,
             record.average,
             record.last_score if record.last_score is not None else "—",
             record.last_level,
@@ -445,8 +857,31 @@ def update_term_records(
             new_attempts = old_attempts + 1
             old_total = (old.average * old_attempts) if old else 0
             new_average = round((old_total + question.score) / new_attempts)
-            stable_high = 2 if old and old.last_score is not None and old.last_score >= 90 and question.score >= 90 else 0
+            stable_high = (
+                2
+                if old
+                and old.last_score is not None
+                and old.last_score >= 90
+                and old.last_level >= 5
+                and question.score >= 90
+                else 0
+            )
             interval = next_interval(new_score, question.score, question.level, stable_high)
+            recall_score = old.recall_score if old else None
+            recall_attempts = old.recall_attempts if old else 0
+            explanation_score = old.explanation_score if old else None
+            explanation_attempts = old.explanation_attempts if old else 0
+            if question.question_mode == TERM_RECALL_MODE:
+                recall_score = updated_recall_mastery(recall_score, recall_attempts, question.score)
+                recall_attempts += 1
+            else:
+                explanation_score = updated_mastery(
+                    explanation_score,
+                    explanation_attempts,
+                    question.score,
+                    question.level,
+                )
+                explanation_attempts += 1
             catalog_item = catalog_by_term.get(term)
             track = catalog_item.track if catalog_item else question.track
             related = catalog_item.related if catalog_item else " / ".join(question.related_terms)
@@ -467,30 +902,66 @@ def update_term_records(
                 last_score=question.score,
                 last_session=session_key,
                 applied_sessions=(old.applied_sessions if old else ()) + (session_key,),
+                recall_score=recall_score,
+                recall_attempts=recall_attempts,
+                explanation_score=explanation_score,
+                explanation_attempts=explanation_attempts,
             )
-    atomic_write(root / "progress" / "terms.md", render_terms(records))
+    atomic_write(progress_file(root, "語句別理解度.md", "terms.md"), render_terms(records))
     return records
 
 
 def recent_domain_counts(root: Path, limit_sessions: int = 5) -> dict[str, int]:
-    session_files = sorted((root / "sessions").glob("*.md"), reverse=True)
     counts: dict[str, int] = {}
-    sessions_seen = 0
-    for path in session_files:
+    sections: list[tuple[date, int, str]] = []
+    for path in session_file_paths(root):
+        session_day = as_date(path.stem)
+        if session_day is None:
+            continue
         text = path.read_text(encoding="utf-8")
-        sections = re.split(r"(?=^## Session \d+[ \t]*$)", text, flags=re.MULTILINE)
-        for section in reversed(sections[1:]):
-            for domain in re.findall(r"^- Domain:[ \t]*(.+?)[ \t]*$", section, flags=re.MULTILINE):
-                counts[domain] = counts.get(domain, 0) + 1
-            sessions_seen += 1
-            if sessions_seen >= limit_sessions:
-                return counts
+        for match in re.finditer(r"^## Session (\d+)[ \t]*$", text, flags=re.MULTILINE):
+            try:
+                session_mode_for_path(root, path, text, int(match.group(1)))
+            except ValueError:
+                continue
+            start, end = session_bounds(text, int(match.group(1)))
+            sections.append((session_day, int(match.group(1)), text[start:end]))
+    for _, _, section in sorted(sections, reverse=True)[:limit_sessions]:
+        for domain in re.findall(r"^- Domain:[ \t]*(.+?)[ \t]*$", section, flags=re.MULTILINE):
+            counts[domain] = counts.get(domain, 0) + 1
+    return counts
+
+
+def recent_term_counts(root: Path, today: date, limit_sessions: int = 5) -> dict[str, int]:
+    """Weight same-day appearances more heavily, including ungraded sessions."""
+    counts: dict[str, int] = {}
+    sections: list[tuple[date, int, str]] = []
+    for path in session_file_paths(root):
+        session_day = as_date(path.stem)
+        if session_day is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"^## Session (\d+)[ \t]*$", text, flags=re.MULTILINE):
+            try:
+                session_mode_for_path(root, path, text, int(match.group(1)))
+            except ValueError:
+                continue
+            start, end = session_bounds(text, int(match.group(1)))
+            sections.append((session_day, int(match.group(1)), text[start:end]))
+    for session_day, _, section in sorted(sections, reverse=True)[:limit_sessions]:
+        weight = 4 if session_day == today else 1
+        for question in re.split(r"(?=^### Q\d+[ \t]*$)", section, flags=re.MULTILINE)[1:]:
+            terms = parse_list_field(question, "Primary Terms")
+            if not terms:
+                terms = parse_list_field(question, "Terms")
+            for term in terms:
+                counts[term] = counts.get(term, 0) + weight
     return counts
 
 
 def all_scored_questions(root: Path) -> list[tuple[date, int, GradedQuestion]]:
     results: list[tuple[date, int, GradedQuestion]] = []
-    for path in sorted((root / "sessions").glob("*.md")):
+    for path in session_file_paths(root):
         study_date = as_date(path.stem)
         if study_date is None:
             continue
@@ -501,13 +972,18 @@ def all_scored_questions(root: Path) -> list[tuple[date, int, GradedQuestion]]:
         ]
         for number in numbers:
             try:
-                status, questions = parse_graded_session(text, number)
+                session_mode_for_path(root, path, text, number)
+                status, questions = parse_graded_session(
+                    text,
+                    number,
+                    allow_missing_mode=is_legacy_session_path(root, path),
+                )
             except ValueError:
                 continue
             if status not in {"grading", "graded"}:
                 continue
             results.extend((study_date, number, question) for question in questions)
-    return results
+    return sorted(results, key=lambda item: (item[0], item[1], item[2].number))
 
 
 def domain_level(score: int) -> str:
@@ -547,7 +1023,10 @@ def render_domains(
             values = [domain, "—", "Unassessed", "—", 0, 0, row.get("Notes", "未評価")]
         else:
             term_mean = sum(record.score for record in term_records) / len(term_records) if term_records else None
-            recent = [question.score for _, question in domain_questions[-5:]]
+            recent = [
+                min(question.score, level_cap(question.level))
+                for _, question in domain_questions[-5:]
+            ]
             recent_mean = sum(recent) / len(recent) if recent else None
             if term_mean is not None and recent_mean is not None:
                 score = round(term_mean * 0.70 + recent_mean * 0.30)
@@ -571,11 +1050,14 @@ def update_domains(
     records: dict[str, TermRecord],
     study_date: date,
 ) -> dict[str, int]:
-    existing = read_table(root / "progress" / "domains.md", "Domain")
+    existing = read_table(progress_file(root, "分野別理解度.md", "domains.md"), "Domain")
     scored = all_scored_questions(root)
-    atomic_write(root / "progress" / "domains.md", render_domains(existing, records, scored, study_date))
+    atomic_write(
+        progress_file(root, "分野別理解度.md", "domains.md"),
+        render_domains(existing, records, scored, study_date),
+    )
     result: dict[str, int] = {}
-    for row in read_table(root / "progress" / "domains.md", "Domain"):
+    for row in read_table(progress_file(root, "分野別理解度.md", "domains.md"), "Domain"):
         score = as_int(row.get("Score", ""), -1)
         if score >= 0:
             result[row["Domain"]] = score
@@ -613,8 +1095,9 @@ def update_history(
     session_number: int,
     questions: list[GradedQuestion],
     records: dict[str, TermRecord],
+    session_path: Path,
 ) -> dict[str, object]:
-    rows = read_table(root / "progress" / "history.md", "Date")
+    rows = read_table(progress_file(root, "学習履歴.md", "history.md"), "Date")
     average = round(sum(question.score for question in questions) / len(questions))
     b_ratio = round(100 * sum(question.track == "B" for question in questions) / len(questions))
     by_domain: dict[str, list[int]] = {}
@@ -632,6 +1115,8 @@ def update_history(
         if term in records and records[term].next_review
     ]
     next_review = min(review_dates).isoformat() if review_dates else "—"
+    relative_path = session_path.relative_to(root).as_posix()
+    history_target = os.path.relpath(session_path, progress_directory(root))
     row = {
         "Date": study_date.isoformat(),
         "Session": str(session_number),
@@ -641,7 +1126,7 @@ def update_history(
         "Weak Domains": "、".join(weak) or "—",
         "Strong Domains": "、".join(strong) or "—",
         "Next Focus": f"{focus}を{next_review}に復習",
-        "Session File": f"[sessions/{study_date.isoformat()}.md](../sessions/{study_date.isoformat()}.md#session-{session_number})",
+        "Session File": f"[{relative_path}]({history_target}#session-{session_number})",
     }
     replaced = False
     for index, existing in enumerate(rows):
@@ -651,7 +1136,7 @@ def update_history(
             break
     if not replaced:
         rows.append(row)
-    atomic_write(root / "progress" / "history.md", render_history(rows))
+    atomic_write(progress_file(root, "学習履歴.md", "history.md"), render_history(rows))
     return {
         "average": average,
         "weak": weak,
@@ -683,25 +1168,32 @@ def finalize_session(
         f"- Strong points: {strong}\n"
         f"- Weak points: {weak}\n"
         f"- Recommended next review: {summary['next_review']}\n"
-        "- Progress updated: terms.md / domains.md / history.md\n"
+        "- Progress updated: 語句別理解度.md / 分野別理解度.md / 学習履歴.md\n"
     )
     summary_pattern = re.compile(
         rf"^## Session {session_number} Summary[ \t]*$.*\Z",
         flags=re.MULTILINE | re.DOTALL,
     )
     if summary_pattern.search(session):
-        session = summary_pattern.sub(summary_text.rstrip(), session)
+        session = summary_pattern.sub(summary_text, session)
     else:
         session = session.rstrip() + "\n\n" + summary_text.rstrip() + "\n"
     atomic_write(path, text[:start] + session + text[end:])
 
 
-def record_progress(root: Path, study_date: date, session_number: int) -> dict[str, object]:
-    session_path = root / "sessions" / f"{study_date.isoformat()}.md"
-    if not session_path.exists():
-        raise ValueError(f"Session file not found: {session_path}")
+def record_progress(
+    root: Path,
+    study_date: date,
+    session_number: int,
+    mode: Optional[str] = None,
+) -> dict[str, object]:
+    session_path = resolve_session_path(root, study_date, session_number, mode)
     text = session_path.read_text(encoding="utf-8")
-    status, questions = parse_graded_session(text, session_number)
+    status, questions = parse_graded_session(
+        text,
+        session_number,
+        allow_missing_mode=is_legacy_session_path(root, session_path),
+    )
     if status == "cancelled":
         raise ValueError("Cannot record a cancelled session")
     if status not in {"grading", "graded"}:
@@ -709,9 +1201,61 @@ def record_progress(root: Path, study_date: date, session_number: int) -> dict[s
     catalog = load_catalog(root)
     records = update_term_records(root, study_date, session_number, questions, catalog)
     update_domains(root, records, study_date)
-    summary = update_history(root, study_date, session_number, questions, records)
+    summary = update_history(root, study_date, session_number, questions, records, session_path)
     finalize_session(session_path, session_number, summary)
     return {**summary, "questions": len(questions), "session_path": session_path}
+
+
+def rebuild_progress(root: Path) -> dict[str, int]:
+    """Rebuild progress from every fully scored Session in chronological order."""
+    sessions: list[tuple[date, int, Path, str, list[GradedQuestion]]] = []
+    for path in session_file_paths(root):
+        study_date = as_date(path.stem)
+        if study_date is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"^## Session ([1-9][0-9]*)[ \t]*$", text, flags=re.MULTILINE):
+            session_number = int(match.group(1))
+            start, end = session_bounds(text, session_number)
+            section = text[start:end]
+            status_match = re.search(
+                r"^- Status:[ \t]*(\S+)[ \t]*$", section, flags=re.MULTILINE
+            )
+            status = status_match.group(1) if status_match else ""
+            if status not in {"grading", "graded"}:
+                continue
+            mode = session_mode_for_path(root, path, text, session_number)
+            _, questions = parse_graded_session(
+                text,
+                session_number,
+                allow_missing_mode=is_legacy_session_path(root, path),
+            )
+            sessions.append((study_date, session_number, path, mode, questions))
+
+    sessions.sort(key=lambda item: (item[0], item[1], item[2].as_posix()))
+    keys = [(study_date, session_number) for study_date, session_number, _, _, _ in sessions]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Cannot rebuild progress: duplicate Date/Session combinations exist")
+
+    # Validate all inputs before replacing any progress file.
+    catalog = load_catalog(root)
+    if not catalog:
+        raise ValueError("Cannot rebuild progress without a concept catalog")
+    domain_rows = read_table(progress_file(root, "分野別理解度.md", "domains.md"), "Domain")
+
+    atomic_write(progress_file(root, "語句別理解度.md", "terms.md"), render_terms({}))
+    atomic_write(
+        progress_file(root, "分野別理解度.md", "domains.md"),
+        render_domains(domain_rows, {}, [], date.today()),
+    )
+    atomic_write(progress_file(root, "学習履歴.md", "history.md"), render_history([]))
+
+    for study_date, session_number, path, _, questions in sessions:
+        records = update_term_records(root, study_date, session_number, questions, catalog)
+        update_domains(root, records, study_date)
+        summary = update_history(root, study_date, session_number, questions, records, path)
+        finalize_session(path, session_number, summary)
+    return {"sessions": len(sessions), "questions": sum(len(item[4]) for item in sessions)}
 
 
 def tie_break(term: str, today: date) -> float:
@@ -726,10 +1270,18 @@ def build_candidates(
     recent_counts: dict[str, int],
     focus: str = "",
     mode: str = "standard",
+    recent_terms: Optional[dict[str, int]] = None,
 ) -> list[Candidate]:
     focus_tokens = [token.strip().lower() for token in re.split(r"[,/、]", focus) if token.strip()]
-    weak_names = {name for name, record in terms.items() if record.score < 60}
+    weak_names = {
+        name
+        for name, record in terms.items()
+        if record.score < 60
+        or (record.recall_score is not None and record.recall_score < 60)
+        or (record.explanation_score is not None and record.explanation_score < 60)
+    }
     candidates: list[Candidate] = []
+    recent_terms = recent_terms or {}
 
     for item in catalog:
         record = terms.get(item.term)
@@ -749,31 +1301,81 @@ def build_candidates(
             weakness = 0.0
             forgetting = 0.0
             unseen_bonus = 20
+            mode_unseen = True
             recent_penalty = 0
             due = False
             challenge = False
-            level = target_level(None, item.entry_level)
+            level = 1 if mode == TERM_RECALL_MODE else target_level(None, item.entry_level)
             reason = "未学習。頻出度と前提関係を見て導入"
         else:
-            weakness = 0.45 * (100 - record.score)
+            if mode == TERM_RECALL_MODE:
+                mode_score = record.recall_score
+                mode_attempts = record.recall_attempts
+                mode_label = "暗記理解度"
+            else:
+                legacy_explanation = (
+                    record.explanation_score is None
+                    and record.explanation_attempts <= 0
+                    and record.recall_attempts <= 0
+                    and record.attempts > 0
+                )
+                mode_score = record.score if legacy_explanation else record.explanation_score
+                mode_attempts = record.attempts if legacy_explanation else record.explanation_attempts
+                mode_label = "通常説明理解度"
+            mode_unseen = mode_attempts <= 0 or mode_score is None
+            weakness = 0.0 if mode_unseen else 0.45 * (100 - mode_score)
             elapsed = (today - record.last_studied).days if record.last_studied else base_interval(record.score)
             elapsed = max(0, elapsed)
             forgetting = min(40.0, 35.0 * elapsed / base_interval(record.score))
-            unseen_bonus = 0
+            unseen_bonus = 20 if mode_unseen else 0
             due = bool(record.next_review and record.next_review <= today) or forgetting >= 30
-            challenge = record.score >= 80
+            challenge = not mode_unseen and mode_score >= 80
             recent_penalty = 30 if elapsed == 0 and record.last_score is not None and record.last_score >= 60 else 0
-            level = target_level(record.score, item.entry_level)
-            if record.score < 60:
-                reason = f"理解度{record.score}の弱点を再構成"
+            level = (
+                1
+                if mode == TERM_RECALL_MODE
+                else target_level(None if mode_unseen else mode_score, item.entry_level)
+            )
+            if mode_unseen:
+                if mode == TERM_RECALL_MODE:
+                    reference = (
+                        record.explanation_score
+                        if record.explanation_score is not None
+                        else record.score
+                    )
+                    reason = f"暗記語句では未評価。通常説明の理解度{reference}も参照"
+                else:
+                    reference = (
+                        record.recall_score if record.recall_score is not None else record.score
+                    )
+                    reason = f"通常説明では未評価。暗記理解度{reference}も参照"
+            elif mode_score < 60:
+                reason = f"{mode_label}{mode_score}の弱点を再構成"
             elif due:
                 reason = f"最終学習から{elapsed}日。復習期限が近い/超過"
             elif challenge:
-                reason = f"理解度{record.score}。シナリオへ難化"
+                reason = (
+                    f"暗記理解度{mode_score}。定着を再確認"
+                    if mode == TERM_RECALL_MODE
+                    else f"通常説明理解度{mode_score}。シナリオへ難化"
+                )
             else:
-                reason = f"理解度{record.score}。関連知識を補強"
+                reason = f"{mode_label}{mode_score}。関連知識を補強"
 
-        priority = weakness + forgetting + subject_b + unseen_bonus + relation + balance + focus_bonus - recent_penalty
+        term_recency_penalty = min(24, 4 * recent_terms.get(item.term, 0))
+        priority = (
+            weakness
+            + forgetting
+            + subject_b
+            + unseen_bonus
+            + relation
+            + balance
+            + focus_bonus
+            - recent_penalty
+            - term_recency_penalty
+        )
+        if term_recency_penalty:
+            reason += "。直近の出題を考慮"
         if mode == "weak":
             priority += weakness * 0.5
         elif mode == "new" and record is None:
@@ -781,14 +1383,27 @@ def build_candidates(
         elif mode == "subject-b" and item.track == "B":
             priority += 25
 
-        priority += item.importance * 1.5 + tie_break(item.term, today)
+        if mode == TERM_RECALL_MODE and record is not None:
+            if record.explanation_score is not None:
+                priority += 0.20 * (100 - record.explanation_score)
+        elif record is not None and record.recall_score is not None and record.recall_score < 60:
+            priority += 0.25 * (100 - record.recall_score)
+            reason += f"。暗記理解度{record.recall_score}を通常説明で補強"
+
+        # Importance is the catalog's base exam priority.  Make it strong
+        # enough to order otherwise comparable new terms, while allowing a
+        # genuine weak point or overdue review to take precedence.
+        priority += item.importance * 4 + tie_break(item.term, today)
+        # Keep priority comparisons deterministic across harmless floating-point
+        # representation differences caused by the component additions above.
+        priority = round(priority, 8)
         candidates.append(
             Candidate(
                 item=item,
                 priority=priority,
                 weakness=weakness,
                 forgetting=forgetting,
-                unseen=record is None,
+                unseen=mode_unseen,
                 due=due,
                 challenge=challenge,
                 suggested_level=level,
@@ -850,21 +1465,42 @@ def diagnostic_plan(catalog: list[CatalogItem], count: int, focus: str = "") -> 
     return result
 
 
-def adaptive_plan(candidates: list[Candidate], count: int, mode: str = "standard") -> list[tuple[str, Candidate]]:
+def term_recall_track_counts(count: int) -> tuple[int, int]:
+    """Allocate whole questions to A first, leaving every fractional remainder to B."""
+    a_count = math.floor(count * 0.40)
+    return a_count, count - a_count
+
+
+def planned_track(candidate: Candidate, mode: str) -> str:
+    if mode == TERM_RECALL_MODE:
+        return "B" if candidate.item.track == "B" else "A"
+    return candidate.item.track
+
+
+def adaptive_plan(
+    candidates: list[Candidate],
+    count: int,
+    mode: str = "standard",
+) -> list[tuple[str, Candidate]]:
     if mode == "weak":
         weak_count, due_count, new_count = round(count * 0.60), round(count * 0.20), round(count * 0.10)
     elif mode == "new":
         weak_count, due_count, new_count = round(count * 0.25), round(count * 0.15), round(count * 0.50)
+    elif mode == STANDARD_SESSION_MODE and count >= DEFAULT_NORMAL_QUESTION_COUNT:
+        # The six-question default adds one new concept to the former five-question
+        # mix. Every explicitly requested question beyond six expands coverage too.
+        weak_count, due_count, new_count = 2, 1, count - 4
     else:
         weak_count, due_count, new_count = round(count * 0.40), round(count * 0.25), round(count * 0.20)
     challenge_count = max(0, count - weak_count - due_count - new_count)
     selected: list[tuple[str, Candidate]] = []
 
+    challenge_label = "定着確認" if mode == TERM_RECALL_MODE else "発展"
     buckets = [
         ("弱点", (c for c in candidates if not c.unseen and c.weakness >= 13.5), weak_count),
         ("復習期", (c for c in candidates if not c.unseen and c.due), due_count),
         ("新規", (c for c in candidates if c.unseen), new_count),
-        ("発展", (c for c in candidates if c.challenge), challenge_count),
+        (challenge_label, (c for c in candidates if c.challenge), challenge_count),
     ]
     for label, pool, quota in buckets:
         before = len(selected)
@@ -878,9 +1514,16 @@ def adaptive_plan(candidates: list[Candidate], count: int, mode: str = "standard
         for index in range(before, len(selected)):
             selected[index] = ("優先度補完", selected[index][1])
     selected = selected[:count]
-    if count >= 4 and mode != "subject-b":
+    if mode == TERM_RECALL_MODE:
+        _, target_b = term_recall_track_counts(count)
+        minimum_b = maximum_b = target_b
+    elif count >= 4 and mode != "subject-b":
         minimum_b = math.ceil(count * 0.70)
         maximum_b = math.floor(count * 0.85)
+    else:
+        return selected
+
+    if mode != "subject-b":
         used = {candidate.item.term for _, candidate in selected}
 
         def same_bucket(label: str, candidate: Candidate) -> bool:
@@ -889,19 +1532,32 @@ def adaptive_plan(candidates: list[Candidate], count: int, mode: str = "standard
                 "復習期": not candidate.unseen and candidate.due,
                 "新規": candidate.unseen,
                 "発展": candidate.challenge,
+                "定着確認": candidate.challenge,
             }.get(label, True)
 
-        while sum(candidate.item.track == "B" for _, candidate in selected) > maximum_b:
-            replaceable = [(index, c) for index, (_, c) in enumerate(selected) if c.item.track == "B"]
+        while sum(planned_track(candidate, mode) == "B" for _, candidate in selected) > maximum_b:
+            replaceable = [
+                (index, candidate)
+                for index, (_, candidate) in enumerate(selected)
+                if planned_track(candidate, mode) == "B"
+            ]
             if not replaceable:
                 break
             index, removed = min(replaceable, key=lambda pair: pair[1].priority)
             label = selected[index][0]
             replacements = [
-                c for c in candidates if c.item.track != "B" and c.item.term not in used and same_bucket(label, c)
+                candidate
+                for candidate in candidates
+                if planned_track(candidate, mode) != "B"
+                and candidate.item.term not in used
+                and same_bucket(label, candidate)
             ]
             if not replacements:
-                replacements = [c for c in candidates if c.item.track != "B" and c.item.term not in used]
+                replacements = [
+                    candidate
+                    for candidate in candidates
+                    if planned_track(candidate, mode) != "B" and candidate.item.term not in used
+                ]
             if not replacements:
                 break
             replacement = max(replacements, key=lambda c: c.priority)
@@ -909,17 +1565,29 @@ def adaptive_plan(candidates: list[Candidate], count: int, mode: str = "standard
             used.add(replacement.item.term)
             selected[index] = (label, replacement)
 
-        while sum(candidate.item.track == "B" for _, candidate in selected) < minimum_b:
-            replaceable = [(index, c) for index, (_, c) in enumerate(selected) if c.item.track != "B"]
+        while sum(planned_track(candidate, mode) == "B" for _, candidate in selected) < minimum_b:
+            replaceable = [
+                (index, candidate)
+                for index, (_, candidate) in enumerate(selected)
+                if planned_track(candidate, mode) != "B"
+            ]
             if not replaceable:
                 break
             index, removed = min(replaceable, key=lambda pair: pair[1].priority)
             label = selected[index][0]
             replacements = [
-                c for c in candidates if c.item.track == "B" and c.item.term not in used and same_bucket(label, c)
+                candidate
+                for candidate in candidates
+                if planned_track(candidate, mode) == "B"
+                and candidate.item.term not in used
+                and same_bucket(label, candidate)
             ]
             if not replacements:
-                replacements = [c for c in candidates if c.item.track == "B" and c.item.term not in used]
+                replacements = [
+                    candidate
+                    for candidate in candidates
+                    if planned_track(candidate, mode) == "B" and candidate.item.term not in used
+                ]
             if not replacements:
                 break
             replacement = max(replacements, key=lambda c: c.priority)
@@ -927,6 +1595,13 @@ def adaptive_plan(candidates: list[Candidate], count: int, mode: str = "standard
             used.add(replacement.item.term)
             selected[index] = (label, replacement)
     return selected
+
+
+def term_recall_plan(candidates: list[Candidate], count: int) -> list[tuple[str, Candidate]]:
+    return [
+        (bucket, replace(candidate, suggested_level=1))
+        for bucket, candidate in adaptive_plan(candidates, count, TERM_RECALL_MODE)
+    ]
 
 
 def suggested_form(level: int) -> str:
@@ -940,8 +1615,29 @@ def suggested_form(level: int) -> str:
     }[level]
 
 
-def render_plan(plan: list[tuple[str, Candidate]], phase: str, today: date) -> str:
-    b_count = sum(1 for _, candidate in plan if candidate.item.track == "B")
+def term_recall_question(term: str) -> str:
+    return f"{term}とは何ですか？"
+
+
+def infer_generation_request(request: str) -> tuple[str, Optional[int]]:
+    """Keep natural-language trigger behavior testable without exposing it as CLI input."""
+    term_recall = bool(
+        re.search(r"暗記(?:単語|語句)?問題|(?:暗記)?(?:単語|語句)問題", request)
+    )
+    count_match = re.search(r"(\d+)\s*問", request)
+    return (
+        TERM_RECALL_MODE if term_recall else "standard",
+        int(count_match.group(1)) if count_match else (10 if term_recall else None),
+    )
+
+
+def render_plan(
+    plan: list[tuple[str, Candidate]],
+    phase: str,
+    today: date,
+    mode: str = "standard",
+) -> str:
+    b_count = sum(1 for _, candidate in plan if planned_track(candidate, mode) == "B")
     b_ratio = round(100 * b_count / len(plan)) if plan else 0
     lines = [
         "# Adaptive selection plan",
@@ -949,18 +1645,36 @@ def render_plan(plan: list[tuple[str, Candidate]], phase: str, today: date) -> s
         f"- Date: {today.isoformat()}",
         f"- Phase: {phase}",
         f"- Questions: {len(plan)}",
-        f"- Strict Track-B ratio: {b_ratio}% (A/B concepts are counted separately)",
-        "",
-        "| Slot | Bucket | Term | Domain | Track | Level | Form | Priority | Reason |",
-        "|---:|---|---|---|---|---:|---|---:|---|",
     ]
+    if mode == TERM_RECALL_MODE:
+        lines.extend(
+            [
+                f"- Track allocation: A {len(plan) - b_count} / B {b_count}",
+                "",
+                "| Slot | Bucket | Term | Domain | Track | Level | Form | Priority | Reason | Question |",
+                "|---:|---|---|---|---|---:|---|---:|---|---|",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"- Strict Track-B ratio: {b_ratio}% (A/B concepts are counted separately)",
+                "",
+                "| Slot | Bucket | Term | Domain | Track | Level | Form | Priority | Reason |",
+                "|---:|---|---|---|---|---:|---|---:|---|",
+            ]
+        )
     for slot, (bucket, candidate) in enumerate(plan, 1):
         item = candidate.item
-        lines.append(
-            f"| {slot} | {bucket} | {item.term} | {item.domain} | {item.track} | "
-            f"{candidate.suggested_level} | {suggested_form(candidate.suggested_level)} | "
-            f"{candidate.priority:.1f} | {candidate.reason} |"
+        track = planned_track(candidate, mode)
+        form = "語句説明" if mode == TERM_RECALL_MODE else suggested_form(candidate.suggested_level)
+        row = (
+            f"| {slot} | {bucket} | {item.term} | {item.domain} | {track} | "
+            f"{candidate.suggested_level} | {form} | {candidate.priority:.1f} | {candidate.reason} |"
         )
+        if mode == TERM_RECALL_MODE:
+            row += f" {markdown_cell(term_recall_question(item.term))} |"
+        lines.append(row)
     return "\n".join(lines)
 
 
@@ -969,14 +1683,19 @@ def default_root() -> Path:
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plan and record adaptive security-specialist study in Markdown.")
+    parser = argparse.ArgumentParser(
+        description="Plan and record adaptive security-specialist study in Markdown."
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     plan_parser = subparsers.add_parser("plan", help="Print a Markdown selection plan without changing files.")
     plan_parser.add_argument("--root", type=Path, default=default_root())
     plan_parser.add_argument("--date", type=as_date, default=date.today())
     plan_parser.add_argument("--count", type=int)
     plan_parser.add_argument("--focus", default="")
-    plan_parser.add_argument("--mode", choices=["standard", "weak", "new", "subject-b", "light"], default="standard")
+    plan_parser.add_argument(
+        "--mode",
+        choices=["standard", "weak", "new", "subject-b", "light", TERM_RECALL_MODE],
+    )
     record_parser = subparsers.add_parser(
         "record",
         help="Idempotently update Markdown progress from an already-scored Session.",
@@ -984,6 +1703,21 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     record_parser.add_argument("--root", type=Path, default=default_root())
     record_parser.add_argument("--date", type=as_date, required=True)
     record_parser.add_argument("--session", type=int, required=True)
+    record_parser.add_argument(
+        "--mode",
+        choices=[STANDARD_SESSION_MODE, TERM_RECALL_MODE],
+        help="Verify the mode-specific Session directory.",
+    )
+    rebuild_parser = subparsers.add_parser(
+        "rebuild",
+        help="Rebuild Markdown progress from all fully scored Sessions in chronological order.",
+    )
+    rebuild_parser.add_argument("--root", type=Path, default=default_root())
+    unanswered_parser = subparsers.add_parser(
+        "unanswered",
+        help="Write a compact Markdown list of unanswered questions.",
+    )
+    unanswered_parser.add_argument("--root", type=Path, default=default_root())
     return parser.parse_args(argv)
 
 
@@ -998,7 +1732,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("error: --session must be positive", file=sys.stderr)
             return 2
         try:
-            result = record_progress(root, args.date, args.session)
+            result = record_progress(root, args.date, args.session, args.mode)
         except ValueError as error:
             print(f"error: {error}", file=sys.stderr)
             return 2
@@ -1008,9 +1742,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         return 0
 
+    if args.command == "rebuild":
+        try:
+            result = rebuild_progress(root)
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        print(f"Rebuilt {result['sessions']} sessions and {result['questions']} questions")
+        return 0
+
+    if args.command == "unanswered":
+        path = write_unanswered_index(root)
+        print(f"Wrote {len(unanswered_questions(root))} unanswered questions to {path}")
+        return 0
+
     catalog = load_catalog(root)
     if not catalog:
-        print(f"error: no concept catalog found under {root / 'references' / 'taxonomy.md'}", file=sys.stderr)
+        print(f"error: no concept catalog found under {root / '参照資料' / '出題分類と概念カタログ.md'}", file=sys.stderr)
         return 2
     terms = load_terms(root)
     catalog = merge_uncatalogued_terms(catalog, terms)
@@ -1018,21 +1766,46 @@ def main(argv: Optional[list[str]] = None) -> int:
     if today is None:
         print("error: --date must use YYYY-MM-DD", file=sys.stderr)
         return 2
-    if args.count is not None and not 1 <= args.count <= 30:
+    mode = args.mode or STANDARD_SESSION_MODE
+    requested_count = args.count
+    if requested_count is not None and not 1 <= requested_count <= 30:
         print("error: --count must be between 1 and 30", file=sys.stderr)
         return 2
 
     assessed = any(record.attempts > 0 for record in terms.values())
-    if not assessed:
-        count = args.count if args.count is not None else (3 if args.mode == "light" else 8)
+    if mode == TERM_RECALL_MODE:
+        count = requested_count if requested_count is not None else 10
+        candidates = build_candidates(
+            catalog,
+            terms,
+            today,
+            recent_domain_counts(root),
+            args.focus,
+            TERM_RECALL_MODE,
+            recent_term_counts(root, today),
+        )
+        plan = term_recall_plan(candidates, count)
+        phase = TERM_RECALL_MODE
+    elif not assessed:
+        count = requested_count if requested_count is not None else (3 if mode == "light" else 8)
         plan = diagnostic_plan(catalog, count, args.focus)
         phase = "diagnosis"
     else:
-        count = args.count if args.count is not None else (3 if args.mode == "light" else 5)
-        candidates = build_candidates(catalog, terms, today, recent_domain_counts(root), args.focus, args.mode)
-        plan = adaptive_plan(candidates, count, args.mode)
+        count = requested_count if requested_count is not None else (
+            3 if mode == "light" else DEFAULT_NORMAL_QUESTION_COUNT
+        )
+        candidates = build_candidates(
+            catalog,
+            terms,
+            today,
+            recent_domain_counts(root),
+            args.focus,
+            mode,
+            recent_term_counts(root, today),
+        )
+        plan = adaptive_plan(candidates, count, mode)
         phase = "adaptive"
-    print(render_plan(plan, phase, today))
+    print(render_plan(plan, phase, today, mode))
     return 0
 
 
