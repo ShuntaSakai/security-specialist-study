@@ -5,6 +5,7 @@
 - [暗号・PKI](暗号・PKI.md): 暗号化、署名、証明書、TLS、HTTP/HTTPS
 - [メールセキュリティ](メールセキュリティ.md): SMTPとTLS、メール送受信の役割
 - [Webセキュリティ](Webセキュリティ.md): CSRF、SameSite、SQLインジェクション
+- [認証・認可 / IAM](認証・認可_IAM.md): SAMLによる認証連携
 - [リスク・ガバナンス](リスク・ガバナンス.md): リスク対応と残余リスク
 - [DNS](DNS.md): DNSSECとRRSIG検証
 - [OSセキュリティ](OSセキュリティ.md): Active DirectoryとKerberos
