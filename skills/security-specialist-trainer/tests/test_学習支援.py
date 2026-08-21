@@ -200,7 +200,7 @@ class 学習支援テスト(unittest.TestCase):
             )
         self.assertEqual(0, exit_code)
         self.assertIn("- Questions: 10", output.getvalue())
-        self.assertIn("- Track allocation: A 4 / B 6", output.getvalue())
+        self.assertIn("- Track allocation: A 0 / B 10", output.getvalue())
 
     def test_問題数は一問から三十問を受理し範囲外を拒否する(self) -> None:
         accepted = [
@@ -270,6 +270,86 @@ class 学習支援テスト(unittest.TestCase):
                 self.assertEqual(expected_a, tracks.count("A"))
                 self.assertEqual(expected_b, tracks.count("B"))
                 self.assertTrue(all(candidate.suggested_level == 1 for _, candidate in plan))
+
+    def test_既存の暗記語句セッションは旧科目区分配分でも採点できる(self) -> None:
+        text = """## Session 1
+
+- Status: grading
+- Mode: term-recall
+- Question Count: 5
+
+### Q1
+
+- Domain: 暗号
+- Primary Terms:
+  - `共通鍵暗号`
+- Related Terms:
+  - `鍵`
+- Level: 1
+- Track: A
+
+### 採点
+
+Score: 80 / 100
+
+### Q2
+
+- Domain: 認証・認可 / IAM
+- Primary Terms:
+  - `多要素認証`
+- Related Terms:
+  - `認証要素`
+- Level: 1
+- Track: A
+
+### 採点
+
+Score: 80 / 100
+
+### Q3
+
+- Domain: Webセキュリティ
+- Primary Terms:
+  - `CSRF`
+- Related Terms:
+  - `SameSite`
+- Level: 1
+- Track: B
+
+### 採点
+
+Score: 80 / 100
+
+### Q4
+
+- Domain: DNS
+- Primary Terms:
+  - `DNSSEC`
+- Related Terms:
+  - `電子署名`
+- Level: 1
+- Track: B
+
+### 採点
+
+Score: 80 / 100
+
+### Q5
+
+- Domain: メールセキュリティ
+- Primary Terms:
+  - `DMARC`
+- Related Terms:
+  - `SPF`
+- Level: 1
+- Track: B
+
+### 採点
+
+Score: 80 / 100
+"""
+        _, questions = study_helper.parse_graded_session(text, 1)
+        self.assertEqual(5, len(questions))
 
     def test_重要度の高い未学習語句を明確に優先する(self) -> None:
         high = study_helper.CatalogItem(
@@ -939,6 +1019,21 @@ Score: 100 / 100
         merged_by_term = {item.term: item for item in merged}
         self.assertEqual("A", merged_by_term["プレースホルダ"].track)
 
+    def test_科目A専用語句は計画候補から除外する(self) -> None:
+        subject_a = study_helper.CatalogItem(
+            "科目A専用語句", "Webセキュリティ", "A", 5, 1, False, "", ""
+        )
+        shared = study_helper.CatalogItem(
+            "共通語句", "Webセキュリティ", "A/B", 5, 1, False, "", ""
+        )
+        subject_b = study_helper.CatalogItem(
+            "科目B語句", "Webセキュリティ", "B", 5, 1, False, "", ""
+        )
+
+        eligible = study_helper.planning_catalog([subject_a, shared, subject_b])
+
+        self.assertEqual(["共通語句", "科目B語句"], [item.term for item in eligible])
+
     def test_同日抑制は生涯平均でなく直近得点を使う(self) -> None:
         item = next(item for item in self.catalog if item.term == "SQLインジェクション")
         failed = study_helper.TermRecord(
@@ -1193,7 +1288,6 @@ Score: 55 / 100
 - Status: grading
 - Mode: term-recall
 - Question Count: 1
-- Track A/B Target: 40% / 60%
 
 ### Q1
 

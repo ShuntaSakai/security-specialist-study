@@ -43,6 +43,7 @@ LEGACY_SESSION_DIRECTORIES = (STANDARD_SESSION_MODE, TERM_RECALL_MODE)
 CURRENT_SESSIONS_DIRECTORY = "学習記録"
 CURRENT_PROGRESS_DIRECTORY = "進捗"
 CURRENT_REFERENCES_DIRECTORY = "参照資料"
+PLANNING_EXCLUDED_TRACKS = frozenset({"A"})
 
 
 def study_directory(root: Path, current: str, legacy: str) -> Path:
@@ -218,6 +219,11 @@ def load_catalog(root: Path) -> list[CatalogItem]:
             )
         )
     return result
+
+
+def planning_catalog(catalog: Iterable[CatalogItem]) -> list[CatalogItem]:
+    """Exclude concepts that are only for exempt Subject A from future planning."""
+    return [item for item in catalog if item.track not in PLANNING_EXCLUDED_TRACKS]
 
 
 def load_terms(root: Path) -> dict[str, TermRecord]:
@@ -778,9 +784,13 @@ def parse_graded_session(
         if any(question.track not in {"A", "B"} for question in questions):
             raise ValueError("term-recall questions must use Track A or B")
         expected_a, expected_b = term_recall_track_counts(question_count)
+        legacy_a, legacy_b = legacy_term_recall_track_counts(question_count)
         actual_a = sum(question.track == "A" for question in questions)
         actual_b = sum(question.track == "B" for question in questions)
-        if (actual_a, actual_b) != (expected_a, expected_b):
+        if (actual_a, actual_b) not in {
+            (expected_a, expected_b),
+            (legacy_a, legacy_b),
+        }:
             raise ValueError(
                 "term-recall Track allocation must be "
                 f"A {expected_a} / B {expected_b}; got A {actual_a} / B {actual_b}"
@@ -1466,14 +1476,19 @@ def diagnostic_plan(catalog: list[CatalogItem], count: int, focus: str = "") -> 
 
 
 def term_recall_track_counts(count: int) -> tuple[int, int]:
-    """Allocate whole questions to A first, leaving every fractional remainder to B."""
+    """Use only Subject-B-eligible questions for future term-recall sessions."""
+    return 0, count
+
+
+def legacy_term_recall_track_counts(count: int) -> tuple[int, int]:
+    """Accept older term-recall sessions that used a 40/60 A/B split."""
     a_count = math.floor(count * 0.40)
     return a_count, count - a_count
 
 
 def planned_track(candidate: Candidate, mode: str) -> str:
     if mode == TERM_RECALL_MODE:
-        return "B" if candidate.item.track == "B" else "A"
+        return "B"
     return candidate.item.track
 
 
@@ -1761,7 +1776,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"error: no concept catalog found under {root / '参照資料' / '出題分類と概念カタログ.md'}", file=sys.stderr)
         return 2
     terms = load_terms(root)
-    catalog = merge_uncatalogued_terms(catalog, terms)
+    catalog = planning_catalog(merge_uncatalogued_terms(catalog, terms))
+    if not catalog:
+        print("error: no eligible Subject B/A-B concepts remain after excluding Track A", file=sys.stderr)
+        return 2
     today = args.date
     if today is None:
         print("error: --date must use YYYY-MM-DD", file=sys.stderr)
