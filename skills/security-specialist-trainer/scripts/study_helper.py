@@ -499,7 +499,7 @@ def unanswered_questions(root: Path) -> list[UnansweredQuestion]:
 
 
 def render_unanswered_index(questions: list[UnansweredQuestion]) -> str:
-    lines = ["# 未解答一覧", "", "回答欄が空の問題だけを表示します。`わかりません` と記入した問題は未解答ではありません。", ""]
+    lines = ["# 未解答一覧", ""]
     if not questions:
         lines.append("未解答はありません。")
         return "\n".join(lines) + "\n"

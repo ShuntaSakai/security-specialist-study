@@ -146,6 +146,8 @@ class 学習支援テスト(unittest.TestCase):
             index = path.read_text(encoding="utf-8")
 
             self.assertEqual(root / "進捗" / "未解答一覧.md", path)
+            self.assertNotIn("回答欄が空の問題だけを表示します。", index)
+            self.assertTrue(index.startswith("# 未解答一覧\n\n## 理解・応用問題\n"))
             self.assertIn("## 理解・応用問題", index)
             self.assertIn(
                 "[2026-08-17 / Session 1 / Q1~2](../学習記録/理解・応用問題/2026-08-17.md)",
